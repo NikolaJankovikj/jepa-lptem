@@ -1,0 +1,7 @@
+/data/
+/checkpoints/
+/code/
+experiments/*/wandb/
+.venv/
+__pycache__/
+*.egg-info/
