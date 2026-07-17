@@ -53,18 +53,12 @@ printf "data/\ncheckpoints/\ncode/\nexperiments/*/wandb/\n.venv/\n__pycache__/\n
 
 **Where:** local (small subsets only — full data goes straight to the remote in Step 5/6).
 
-- [ ] **Verify the exact repo IDs before relying on them** (the previously drafted IDs — `papertemp/SAM-EM-Paper-PublicData`, `JamaliLab/LEONDARDO` (sic) — are unconfirmed; note the LEONARDO spelling):
-
-```bash
-uv run python -c "from huggingface_hub import list_repo_files; print(list_repo_files('<candidate-id>', repo_type='dataset')[:20])"
-```
-
-  If an ID 404s, search HF Hub (`huggingface_hub.HfApi().list_datasets(search='SAM-EM')`, same for LEONARDO) and record the correct IDs + file listing in `README.md`.
-- [ ] Clone upstream code (gitignored): `git clone https://github.com/JamaliLab/SAM-EM code/sam-em`, same for `JamaliLab/LEONARDO` and `facebookresearch/vjepa2` (verify org/repo names too).
-- [ ] Download **locally only what's small**: a handful of SAM-EM synthetic clips + the experimental zips (Au nanorods, aggregation) for development; defer `trainset.zip` and the large ablation set to the remote.
-- [ ] Smoke-load V-JEPA 2 weights once (CPU is fine for a load test): `AutoModel.from_pretrained("facebook/vjepa2-vitl-fpc64-256")`.
-- [ ] **Send the Jamali-lab data-request email now** (lead time is months): request the raw LPTEM videos underlying the LEONARDO trajectories; MSc thesis extending their simulator; full citation/acknowledgment; results shared back. Not on the critical path — a nice-to-have for Step 13.
-- [ ] Commit: `chore: verified data sources, download scripts`.
+- [x] **Verified the exact repo IDs** (recorded in `docs/data_sources.md` with sizes). Findings: authoritative SAM-EM data = **`papertemp/SAM-EM-Paper-PublicData`** (has checkpoint + trainset + holdout + both experimental sets + ablations); LEONARDO **dataset** = `JamaliLab/LEONDARDO` (the "typo" is the real upstream repo name); LEONARDO **model** = `JamaliLab/LEONARDO`; encoder = `facebook/vjepa2-vitl-fpc64-256`.
+- [x] Cloned upstream code (shallow, gitignored) into `code/`: `sam-em` (has the renderer under `application/`+`data/`), `leonardo` (`LEONARDO_*.py` motion sampling), `vjepa2` (`src/` SSL loop). Note: macOS case-insensitive FS shows `vitG*/vitg*` config collisions in the vjepa2 clone — cosmetic, clean on the Linux remote.
+- [x] Downloaded small dev subsets (~406 MB, in `data/`, gitignored): SAM-EM `ablationValidationSet.zip` (96 MB synthetic+masks), `experimentalAuNanorods.zip`, `experimentalAggregation.zip`; LEONARDO `datasets.zip` + xlsx + `LEONARDOModel`. Everything ≥ 2 GB (trainset 32 GB, holdout 2.3 GB, checkpoint 2.7 GB, 64 GB ablation) deferred to the remote. **Gotcha:** `hf download REPO --include A B C` mis-parses (first name eaten by `--include`, rest positional); download multi-file with one `hf download REPO FILE` call per file.
+- [ ] Smoke-load V-JEPA 2 weights once (CPU load test) — *in progress; ~1.1 GB download throttled on unauthenticated HF. Consider setting `HF_TOKEN` for the remote's 32 GB pulls.*
+- [ ] **Send the Jamali-lab data-request email** (draft ready in `docs/jamali_data_request_email.md`; off critical path, send now for lead time) — **manual (Nikola)**.
+- [x] Commit docs (`data_sources.md`, email draft). Code/data are gitignored.
 
 ## Step 2 — Remote training PC setup
 
