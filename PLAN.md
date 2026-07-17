@@ -44,10 +44,10 @@ mkdir -p src/jepa_lptem/{data,eval,sim,models} tests scripts configs experiments
 printf "data/\ncheckpoints/\ncode/\nexperiments/*/wandb/\n.venv/\n__pycache__/\n*.egg-info/\n" > .gitignore
 ```
 
-  Notes: `code/` (vendored upstream repos) is gitignored — they're pinned upstream, not ours to commit. `uv` resolves torch per-platform automatically (MPS wheel here, CUDA wheel on the remote from the same lockfile). GPU-only tests are marked `@pytest.mark.gpu` and skipped locally.
-- [ ] Add a `gpu` marker to `pyproject.toml` (`[tool.pytest.ini_options] markers = ["gpu: requires CUDA"]`, `addopts = "-m 'not gpu'"` locally; remote runs use `-m gpu` explicitly).
-- [ ] Move `PLAN.md` and `thesis_brief.md` into the repo so they're versioned and visible on the remote too.
-- [ ] Commit + push: `chore: project skeleton`.
+  Notes: `code/` (vendored upstream repos) is gitignored — they're pinned upstream, not ours to commit. `uv` resolves torch per-platform automatically (MPS wheel here, CUDA wheel on the remote from the same lockfile). GPU-only tests are marked `@pytest.mark.gpu` and skipped locally. **Gotcha (done):** `uv init` creates an *application* with no build backend, so `import jepa_lptem` fails until a `[build-system]` (hatchling) is added — done. Also `.gitignore` must anchor `/data/` with a leading slash, else it also ignores the `src/jepa_lptem/data/` package — fixed.
+- [x] Add a `gpu` marker to `pyproject.toml` (`markers = ["gpu: ..."]`, `addopts = "-m 'not gpu'"` locally; remote runs use `-m gpu`). Verified: `uv run pytest` reads the config and skips gpu by default.
+- [x] Move `PLAN.md` and `thesis_brief.md` into the repo so they're versioned and visible on the remote too.
+- [x] Commit + push: `chore: project skeleton` (pushed to `origin/master`, commit `78ada5c`).
 
 ## Step 1 — Verify sources, start downloads, send the data email
 
