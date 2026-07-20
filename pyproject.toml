@@ -33,6 +33,7 @@ dev = [
 [tool.pytest.ini_options]
 markers = ["gpu: requires CUDA (skipped locally, run explicitly on the remote)"]
 addopts = "-m 'not gpu'"
+testpaths = ["tests"]  # never collect vendored code/ (e.g. code/vjepa2/tests)
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jepa_lptem"]

@@ -59,13 +59,13 @@
 
 # LOCAL PHASE (no GPU needed — Steps 2–4)
 
-## Step 2 — Evaluation spine, tested against ground truth
+## Step 2 — Evaluation spine, tested against ground truth ✅
 
-**Where:** local, pure CPU. *The thesis's contribution is the evaluation — build and validate it before any model exists.*
+**Where:** local, pure CPU. *The thesis's contribution is the evaluation — build and validate it before any model exists.* **Done: 15 tests green.** Library-backed where battle-tested (SciPy Wasserstein, `scipy.ndimage` blob centroids, `trackpy` linking); custom only for the probes.
 
-### 2a: Physical observables (`src/jepa_lptem/eval/observables.py`)
+### 2a: Physical observables (`src/jepa_lptem/eval/observables.py`) — done
 
-- [ ] Failing tests first (`tests/test_observables.py`):
+- [x] Failing tests first (`tests/test_observables.py`):
 
 ```python
 import numpy as np
@@ -95,25 +95,25 @@ def test_size_dist_distance_zero_on_identity():
     assert size_dist_distance(s, s) < 1e-9
 ```
 
-- [ ] Implement: `compute_msd` (ensemble MSD over lag), `fit_growth_exponent` (log-log slope), `size_dist_distance` (1-Wasserstein via `scipy.stats.wasserstein_distance`).
-- [ ] Tests pass → commit.
+- [x] Implemented: `compute_msd` (ensemble MSD over lag), `fit_growth_exponent` (log-log slope, drops non-positive samples), `size_dist_distance` (1-Wasserstein via `scipy.stats.wasserstein_distance`).
+- [x] 7 tests pass → committed.
 
-### 2b: Centroid extraction + tracking (`src/jepa_lptem/eval/tracking.py`)
+### 2b: Centroid extraction + tracking (`src/jepa_lptem/eval/tracking.py`) — done
 
-- [ ] Failing tests: heatmap peaks recovered via connected components; two drifting particles linked over 5 frames by Hungarian assignment (`scipy.optimize.linear_sum_assignment`) with a `max_dist` gate.
-- [ ] Implement `heatmap_to_centroids` and `link_tracks`. **Requirement:** `link_tracks` must *report* coverage (fraction of tracks surviving full-length) rather than silently dropping lost tracks — evaluation coverage must be visible in every MSD number we publish.
-- [ ] Tests pass → commit.
+- [x] Failing tests: heatmap peaks recovered via connected components; two drifting particles linked over 5 frames; **dropout case** proving coverage is reported.
+- [x] Implemented `heatmap_to_centroids` (scipy) and `link_tracks` (**trackpy** Crocker–Grier, chosen over hand-rolled Hungarian for gap-closing/robustness). Returns a `LinkResult(tracks, coverage, n_particles, n_full)` — **coverage is always reported**, never silently dropped.
+- [x] 4 tests pass → committed.
 
-### 2c: Probes (`src/jepa_lptem/eval/probes.py`)
+### 2c: Probes (`src/jepa_lptem/eval/probes.py`) — done
 
 Two probe types, matching the V-JEPA attentive-readout protocol (frozen features, small trainable head):
 
 - **`AttentiveProbe`** — one learned query cross-attends over a latent frame's tokens → regression head for `[count, mean_radius, total_area]`.
-- **`CentroidProbe`** — per-token head with **3 output channels: occupancy logit + (dx, dy) sub-cell offset**. The token grid is 16×16 over a 256² frame (16 px/cell) — raw grid centroids would quantize Brownian steps to noise, which would corrupt MSD exactly where we compare against persistence. Sub-cell offsets fix this: predicted centroid = cell center + offset, trained with BCE (occupancy) + masked L2 (offsets at occupied cells).
+- **`CentroidProbe`** — per-token head (with a learned positional embedding) → **occupancy logit + (dy, dx) sub-cell offset**. The token grid is 16×16 over a 256² frame (16 px/cell) — raw grid centroids would quantize Brownian steps to noise; sub-cell offsets fix this: predicted centroid = cell center + offset, trained with BCE (occupancy) + masked L2 (offsets).
 
-- [ ] Failing tests: (a) `AttentiveProbe` overfits a tiny batch (8 samples, 300 Adam steps, `loss < 1e-2` — if flaky across seeds, fix the seed and/or loosen to 3e-2, it's a sanity check not a benchmark); (b) `CentroidProbe` output shapes `(B,16,16)` occupancy + `(B,16,16,2)` offsets; (c) a synthetic case where the true centroid sits off-center in a cell and the decoded centroid recovers it to <1 px after overfitting.
-- [ ] Implement both probes + a `decode_centroids(occupancy, offsets, threshold)` helper feeding into 2b's tracker.
-- [ ] Tests pass → commit.
+- [x] Tests: `AttentiveProbe` overfits a tiny batch (`loss < 1e-2`); `CentroidProbe` shapes `(B,16,16)` + `(B,16,16,2)`; **pure-math** `decode_centroids` recovers an off-center point to <1 px; and a learn-a-target-field test where the trained probe's decoded centroid lands <1 px from intent.
+- [x] Implemented both probes + `decode_centroids(occupancy, offsets, threshold, cell_size)` feeding 2b's tracker.
+- [x] 4 tests pass → committed. **Note:** `pyproject.toml` now sets `testpaths=["tests"]` so pytest never collects the vendored `code/vjepa2/tests`.
 
 ## Step 3 — Simulator extension: verifiable radius dynamics
 
