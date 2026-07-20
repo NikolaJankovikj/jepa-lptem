@@ -17,6 +17,7 @@ dependencies = [
     "scipy>=1.17.1",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
+    "trackpy>=0.7",
     "transformers>=5.14.1",
 ]
 
