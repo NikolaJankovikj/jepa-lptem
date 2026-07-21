@@ -115,29 +115,14 @@ Two probe types, matching the V-JEPA attentive-readout protocol (frozen features
 - [x] Implemented both probes + `decode_centroids(occupancy, offsets, threshold, cell_size)` feeding 2b's tracker.
 - [x] 4 tests pass → committed. **Note:** `pyproject.toml` now sets `testpaths=["tests"]` so pytest never collects the vendored `code/vjepa2/tests`.
 
-## Step 3 — Simulator extension: verifiable radius dynamics
+## Step 3 — Simulator extension: verifiable radius dynamics ✅
 
-**Where:** local. **Files:** `src/jepa_lptem/sim/dynamics.py`, `tests/test_dynamics.py`
+**Where:** local. **Files:** `src/jepa_lptem/sim/dynamics.py`, `tests/test_dynamics.py`. **Done: 9 tests green.** Each mode reproduces its kinetic law, recovered by 2a's own `fit_growth_exponent` (closing the loop between simulator and evaluation).
 
-- [ ] Failing tests — each mode must reproduce its kinetic law, recovered by 2a's own `fit_growth_exponent` (closing the loop between simulator and evaluation):
-
-```python
-def test_diffusion_limited_growth_exponent():   # dr/dt = K/r^2  ->  r ~ t^(1/3)  (LSW)
-    t, r = evolve_radii(r0=np.array([2.0]), n_steps=500, dt=1.0, mode="diffusion")
-    assert abs(fit_growth_exponent(t[50:], r[0, 50:]) - 1 / 3) < 0.05
-
-def test_reaction_limited_growth_exponent():    # dr/dt = K/r    ->  r ~ t^(1/2)
-    ...
-
-def test_dissolution_shrinks_to_zero():          # dr/dt = -K, clamped at 0
-    ...
-
-def test_coalescence_conserves_volume():         # r_new^3 = r_i^3 + r_j^3, volume-weighted position
-    ...
-```
-
-- [ ] Implement `evolve_radii` (per-particle radius ODEs, Euler steps, clamp ≥ 0) and `merge_on_contact` (merge overlapping pairs until stable).
-- [ ] Tests pass → commit.
+- [x] `evolve_radii` — independent single-particle ODEs: `diffusion` (dr/dt=K/r² → t^⅓), `reaction` (dr/dt=K/r → t^½), `dissolution` (dr/dt=−K, clamp 0). Exponents recovered within ±0.05.
+- [x] `merge_on_contact` — volume-conserving coalescence (r_new=(r_i³+r_j³)^⅓, volume-weighted position), cascades until stable. Tests: pair merge, no-merge-when-far, 3-particle cascade.
+- [x] **`ripen_population`** — the recommended upgrade: *coupled, mass-conserving* Ostwald ripening (LSW). Gibbs–Thomson exchange around r*=⟨r⟩, sub-critical particles dissolve, volume renormalized to initial each step. Verified real coarsening: count 40→6, mean radius 2.50→5.18, total volume constant (851.02). This is the physically-faithful `ripening_coalescence` growth mode; the three `evolve_radii` modes stay simple independent ODEs.
+- [x] 9 tests pass; full suite 24 green → committed.
 
 ## Step 4 — Render bridge + dynamics dataset generator (code + local smoke)
 
