@@ -1,7 +1,45 @@
 import numpy as np
 
-from jepa_lptem.eval.observables import fit_growth_exponent
-from jepa_lptem.sim.dynamics import evolve_radii, merge_on_contact, ripen_population
+from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
+from jepa_lptem.sim.dynamics import (
+    evolve_radii,
+    merge_on_contact,
+    ripen_population,
+    simulate_brownian,
+)
+
+
+# --- Brownian motion (the position ground truth for MSD) ----------------------
+
+def test_brownian_msd_matches_4Dt():
+    # 2D free diffusion: MSD(t) = 4 D t, so d(MSD)/dt = 4 D
+    rng = np.random.default_rng(0)
+    D, dt = 0.5, 1.0
+    t, pos = simulate_brownian(n_particles=3000, n_steps=60, dt=dt, D=D, rng=rng)
+    assert pos.shape == (3000, 60, 2)
+    msd = compute_msd(pos)
+    lags = np.arange(1, 60) * dt
+    slope = np.polyfit(lags, msd, 1)[0]
+    assert abs(slope - 4 * D) < 0.15
+
+
+def test_brownian_starts_at_given_positions():
+    init = np.array([[10.0, 20.0], [30.0, 40.0]])
+    _, pos = simulate_brownian(
+        n_particles=2, n_steps=5, dt=1.0, D=1.0,
+        init_positions=init, rng=np.random.default_rng(1),
+    )
+    assert np.allclose(pos[:, 0], init)
+
+
+def test_brownian_stays_inside_box_when_bounded():
+    _, pos = simulate_brownian(
+        n_particles=50, n_steps=200, dt=1.0, D=5.0,
+        box=(64, 64), rng=np.random.default_rng(2),
+    )
+    assert pos.min() >= 0.0
+    assert pos[..., 0].max() <= 64.0
+    assert pos[..., 1].max() <= 64.0
 
 
 # --- single-particle kinetic laws (independent ODEs) --------------------------

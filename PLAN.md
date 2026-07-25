@@ -4,7 +4,7 @@
 
 **Architecture:** Frozen-or-LoRA V-JEPA 2 ViT-L encoder → cached latent features → small block-causal forecasting predictor (teacher forcing + rollout) → probes that read physical observables off predicted latents → compared against a persistence baseline and a pixel ConvLSTM baseline. All probes are validated against simulator ground truth *before* any model exists.
 
-**Tech stack:** Python 3.11, PyTorch 2.x (bf16, DDP), HuggingFace `transformers` (V-JEPA 2) + `peft` (LoRA), official `facebookresearch/vjepa2` repo for SSL adaptation, SAM-EM simulator (extended), pytest, uv, tmux + ssh for remote runs.
+**Tech stack:** Python 3.11, PyTorch 2.x (bf16, DDP), HuggingFace `transformers` (V-JEPA 2) + `peft` (LoRA), official `facebookresearch/vjepa2` repo for SSL adaptation, LPTEMsimulator physics (re-implemented in `render_bridge.py`), pytest, uv, tmux + ssh for remote runs.
 
 ---
 
@@ -124,15 +124,24 @@ Two probe types, matching the V-JEPA attentive-readout protocol (frozen features
 - [x] **`ripen_population`** — the recommended upgrade: *coupled, mass-conserving* Ostwald ripening (LSW). Gibbs–Thomson exchange around r*=⟨r⟩, sub-critical particles dissolve, volume renormalized to initial each step. Verified real coarsening: count 40→6, mean radius 2.50→5.18, total volume constant (851.02). This is the physically-faithful `ripening_coalescence` growth mode; the three `evolve_radii` modes stay simple independent ODEs.
 - [x] 9 tests pass; full suite 24 green → committed.
 
-## Step 4 — Render bridge + dynamics dataset generator (code + local smoke)
+## Step 4 — Render bridge + dynamics dataset generator (code + local smoke) ✅
 
-**Where:** local — write the code, smoke-test on a handful of videos, validate the physics. **The full 2,000-video generation is deferred to the remote (first job after Step 5 PC setup)** — it's a multi-hour batch job whose ~50 GB output is consumed on the PC.
+**Where:** local — write the code, smoke-test on a handful of videos, validate the physics. **The full generation is deferred to the remote (first job after Step 5 PC setup)** — it's a multi-hour batch job whose ~50 GB output is consumed on the PC.
 
-- [ ] Read SAM-EM's synthetic-video generation code (`code/sam-em`) and locate the renderer entry point; record its signature in the `render_bridge.py` docstring. *(This is the main unknown-shaped task — do it before wiring anything downstream.)*
-- [ ] Implement `src/jepa_lptem/sim/render_bridge.py` — one function, `render_video(positions, radii, liquid_thickness_nm, size=512) -> (T,H,W)`, delegating to SAM-EM's renderer; keep it <100 lines.
-- [ ] Implement `scripts/generate_dynamics_dataset.py`: 4 modes × 500 videos (`diffusion_only`, `growth_diffusion`, `growth_reaction`, `ripening_coalescence`), 100 frames, 512², liquid thickness sampled 20–120 nm (the SNR axis for RQ3); motion sampled from LEONARDO statistics as upstream does. Per video: `frames.npy` + `gt.npz` (positions, radii, event times).
-- [ ] **Smoke locally:** `--n 5`, eyeball the videos (particles visibly grow/merge), then `tests/test_dataset_physics.py`: fit growth exponents on generated `gt.npz` → within ±0.05 of each mode's law. **This is the Step-4 completion bar** — the generator is proven correct on tiny output before we ever run it at scale.
-- [ ] Commit scripts. (Full run + `experiments/dataset-v1/README.md` happen in Step 5/6 on the remote.)
+- [x] **Found the real renderer: `github.com/JamaliLab/LPTEMsimulator`** (a Python port of Yao et al.'s MATLAB `chenlabUIUC/simulatedLPTEM`) — *not* SAM-EM, which is only a segmentation GUI. It has no LICENSE file, so we **re-implement** the image-formation physics cleanly (cited) rather than copy it. Cloned to `code/LPTEMsimulator/` for reference; the one reused asset is its measured `MTFmatrix512.mat`.
+- [x] Implement `src/jepa_lptem/sim/render_bridge.py` — our own clean version of the LPTEMsimulator physics: `draw_spheres` (our circle front-end + spherical-chord gold-thickness map, replacing their nanorods), `render_frame` (Beer–Lambert attenuation through gold/water/SiNx + Poisson + Gaussian + optional MTF), `render_video`, `normalize_uint8`. Fully TDD'd — `tests/test_render_bridge.py` (12 tests: disk area, chord=diameter, darker-particle invariant, water→dimmer monotonic, seeded-noise determinism, MTF DC-preservation).
+- [x] Added `simulate_brownian` to `sim/dynamics.py` (the position ground truth; MSD = 4Dt verified via `compute_msd`, reflecting-box option). +3 tests.
+- [x] Implement `src/jepa_lptem/sim/dataset.py` (`build_clip`, the composition layer) + `scripts/generate_dynamics_dataset.py` as a thin CLI on top: processes `{ripening, diffusion, reaction, static}`, one `.npz`/clip (`frames` uint8 `(T,H,W)`, `positions` `(N,T,2)`, `radii` `(N,T)`) + `manifest.jsonl`.
+- [x] **Smoke locally (`--n-videos 5`, 512², real MTF):** appearance matches a real SAM-EM frame unprompted (real mean 123 vs ours 126, same Poisson texture); GIFs sent to Nikola. `scripts/verify_clips.py` writes overlay GIFs + physics panels and runs an **independent** classical detector (shares no code with the renderer) for a pixels→physics round trip.
+- [x] **Three defects found and fixed before freezing the generator** (see below). Final smoke numbers, all four processes: MSD/4D ratio 0.97–1.13, α = 0.332 / 0.499 / −0.000 / −0.003 (diffusion / reaction / static / ripening), round-trip position error **0.53–0.70 px** on ~20 px radii, detector precision 0.83–1.00.
+- [x] `tests/test_dataset_physics.py` — permanent regression guard on the generated ground truth (exponents to ±0.005, MSD ≈ 4Dt, sparsity ≤ 10 % coverage, min radius ≥ 2 px). Full suite **51 passed**.
+- [x] Commit scripts. (Full run + `experiments/dataset-v1/README.md` happen in Step 5/6 on the remote.)
+
+**Three defects fixed at the end of Step 4** (all would have silently poisoned the 50 GB remote run):
+
+1. **Negative water thickness.** `render_frame` computed `water = thickness_water − gold_nm`, which goes negative once a particle exceeds the 150 nm cell — subtracting optical depth and rendering large/overlapping particles too bright. Now clamped at 0 (a particle thicker than the cell displaces all the water and no more), with a test asserting intensity stops depending on `thickness_water` past that point.
+2. **Uncontrolled density.** Particle count was drawn independently of final size, so growth clips reached ~48 px radii at ~35 % gold coverage — heavy overlap, and *the ground truth stops being recoverable from the frame*, which would make any Gate-1 failure uninterpretable. `rescale_to_density` now scales all radii by one constant so peak coverage hits a target 4–9 % (log-log slope and MSD are both invariant under a uniform radius rescale). Round-trip error on the diffusion clip: 27.65 px → **0.53 px**.
+3. **Two exponent biases, both real physics bugs, not tuning.** (a) *Wrong time origin* — a particle of radius `r0` is not newly nucleated, it already has age `r0³/3K`; labelling frame 0 as `t=0` flattened reaction to 0.43. `growth_time_axis` now returns `(t0, dt)` and the clip carries `t0_growth` in its metadata. (b) *Integrator error* — `evolve_radii` was single-step forward Euler, and `dr/dt = K/r²` moved the radius 65 % in one frame at small `r`, so the measured exponent was the integrator rather than the physics. Added `substeps` (default 10, matching `ripen_population`). Combined: diffusion 0.304 → **0.3318**, reaction 0.433 → **0.4993**.
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
@@ -285,6 +294,6 @@ class LatentForecaster(nn.Module):
 ## Standing risks
 
 - **Remote access friction** (VPN/IT policy): the reason PC setup is deferred to Step 5 and kept off the local critical path; mitigated by tmux-everything + W&B monitoring; worst case, launches happen on-site and run unattended.
-- **SAM-EM renderer integration** (Step 4) is the main unknown-shaped task — its entry-point reading comes *before* any dependent scheduling.
+- ~~**SAM-EM renderer integration** (Step 4)~~ **Resolved:** the renderer was found (`JamaliLab/LPTEMsimulator`) and re-implemented in `render_bridge.py`; local render matches real SAM-EM appearance. No longer a risk.
 - **Gate 2 failure** is the scientific risk, and it is survivable by design.
 - **Disk on the remote** (~200 GB) — checked in Step 5 before anything is generated.
