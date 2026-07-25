@@ -130,3 +130,22 @@ def test_normalize_uint8_spans_full_range():
     assert u.dtype == np.uint8
     assert u.min() == 0
     assert u.max() == 255
+
+
+def test_render_frame_matches_upstream_lptemsimulator_reference():
+    """External oracle: reproduce LPTEMsimulator's `simulate_tem_image` exactly.
+
+    `render_bridge` is a re-implementation, so the thing worth testing is not that
+    it is self-consistent but that it agrees with the published simulator that
+    produced the real SAM-EM training data. Their nanorod is a flat 4.5 px slab at
+    2 nm/px = 9 nm of gold; fed the same gold map, the two must agree to float
+    precision. (Noise and MTF are omitted so this is deterministic -- they are
+    identical operations applied afterwards in both implementations.)
+    """
+    gold_nm = 9.0
+    # transcribed from JamaliLab/LPTEMsimulator, LPTEM_simulated_data.ipynb
+    expected = 30 * np.exp(-(gold_nm / (20 + 50)
+                             + (150 - gold_nm) / 185
+                             + 2 * 50 / 144)) * 37.46
+    got = render_frame(np.full((8, 8), gold_nm), mtf=None, add_noise=False)
+    assert np.allclose(got, expected, rtol=1e-12)

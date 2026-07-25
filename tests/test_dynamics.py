@@ -2,6 +2,7 @@ import numpy as np
 
 from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
 from jepa_lptem.sim.dynamics import (
+    GROWTH_K,
     evolve_radii,
     merge_on_contact,
     ripen_population,
@@ -120,3 +121,19 @@ def test_ripening_coarsens_and_reduces_count():
     mean0 = r[:, 0][r[:, 0] > 0].mean()
     meanT = r[:, -1][r[:, -1] > 0].mean()
     assert meanT > mean0  # surviving mean radius coarsened upward
+
+
+def test_evolve_radii_matches_closed_form_solution():
+    """Analytic oracle: both growth ODEs have exact solutions, so compare to them.
+
+    ``dr/dt = K/r^2`` integrates to ``r^3 = r0^3 + 3Kt`` and ``dr/dt = K/r`` to
+    ``r^2 = r0^2 + 2Kt``. Fitting an exponent only says the curve is *a* power law;
+    this pins the actual trajectory. It is also the check that catches integrator
+    error -- single-step Euler misses by ~7-11% here, which silently biases the
+    growth exponent the whole dataset is labelled with.
+    """
+    for mode, power in (("diffusion", 3), ("reaction", 2)):
+        r0 = np.array([2.0, 5.0, 11.0])
+        t, r = evolve_radii(r0, n_steps=60, dt=3.0, mode=mode)
+        exact = (r0[:, None] ** power + power * GROWTH_K[mode] * t[None, :]) ** (1 / power)
+        assert np.abs(r - exact).max() / exact.max() < 0.01, mode
