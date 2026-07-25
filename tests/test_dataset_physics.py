@@ -15,7 +15,12 @@ import numpy as np
 import pytest
 
 from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
-from jepa_lptem.sim.dataset import PROCESSES, build_clip
+from jepa_lptem.sim.dataset import (
+    MIN_VISIBLE_RADIUS_PX,
+    PROCESSES,
+    STRATA,
+    build_clip,
+)
 from jepa_lptem.sim.render_bridge import render_video, to_uint8
 
 
@@ -41,24 +46,48 @@ def test_msd_of_generated_positions_matches_4Dt():
     assert abs(slope / (4 * meta["D"]) - 1.0) < 0.4, f"slope={slope:.3f} D={meta['D']:.3f}"
 
 
+@pytest.mark.parametrize("stratum", list(STRATA))
 @pytest.mark.parametrize("process", PROCESSES)
-def test_particles_stay_sparse_enough_to_be_resolvable(process):
+def test_particles_stay_sparse_enough_to_be_resolvable(process, stratum):
     # The whole point of the dataset is a recoverable answer key. If particles grow
     # until they overlap, no centroid is extractable and a probe failure becomes
     # uninterpretable. Cap peak coverage well below the touching limit.
     rng = np.random.default_rng(2)
-    _, _, _, _, radii = build_clip(process, 48, (512, 512), rng)
+    _, _, _, _, radii = build_clip(process, 48, (512, 512), rng, stratum=stratum)
     peak = float(np.pi * (radii ** 2).sum(axis=0).max()) / (512 * 512)
-    assert peak <= 0.10, f"{process}: peak gold coverage {peak:.3f}"
+    assert peak <= STRATA[stratum]["max_coverage"] + 1e-6, \
+        f"{process}/{stratum}: peak gold coverage {peak:.3f}"
+
+
+@pytest.mark.parametrize("stratum", list(STRATA))
+@pytest.mark.parametrize("process", PROCESSES)
+def test_no_particle_is_labelled_below_the_visibility_floor(process, stratum):
+    # A particle too small to see under Poisson noise is not a target, it is a
+    # mislabel. Ripening is the one that reaches here, on its dissolving tail.
+    rng = np.random.default_rng(3)
+    _, _, _, _, radii = build_clip(process, 48, (512, 512), rng, stratum=stratum)
+    alive = radii[radii > 0]
+    assert alive.min() >= MIN_VISIBLE_RADIUS_PX, \
+        f"{process}/{stratum}: smallest labelled radius {alive.min():.2f}px"
 
 
 @pytest.mark.parametrize("process", PROCESSES)
-def test_particles_are_several_pixels_wide_in_every_frame(process):
-    # Sub-pixel particles are invisible under Poisson noise -> unlearnable targets.
-    rng = np.random.default_rng(3)
-    _, _, _, _, radii = build_clip(process, 48, (512, 512), rng)
+def test_experiment_stratum_covers_measured_real_conditions(process):
+    """The experiment stratum exists to put real imaging conditions inside the
+    training distribution. Measured on real experimental video (see
+    scripts/compare_to_real.py): apparent particle radius ~6 px, coverage well
+    under 2 %, and frame-to-frame change |dI|/mean ~0.40, which corresponds to
+    beam flux ~8-12. Before this
+    stratum existed our particles were ~3x larger than real, so real data sat
+    outside the distribution entirely -- the failure mode this guards against.
+    """
+    rng = np.random.default_rng(5)
+    _, _, meta, _, radii = build_clip(process, 48, (512, 512), rng, stratum="experiment")
     alive = radii[radii > 0]
-    assert alive.min() >= 2.0, f"{process}: smallest radius {alive.min():.2f}px"
+    assert 3.0 <= alive.max() <= 9.0, f"{process}: max radius {alive.max():.1f}px"
+    coverage = float(np.pi * (radii ** 2).sum(axis=0).max()) / (512 * 512)
+    assert coverage <= 0.02, f"{process}: coverage {coverage:.4f}"
+    assert 8.0 <= meta["beam_flux"] <= 12.0, f"{process}: flux {meta['beam_flux']:.1f}"
 
 
 @pytest.mark.parametrize("process", ["diffusion", "reaction"])

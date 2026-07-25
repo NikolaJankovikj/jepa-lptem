@@ -160,6 +160,22 @@ Not closable at any parameter setting: real LPTEM's structural texture (SiNx gra
 
 `scripts/verify_clips.py` now reports the brightness-shortcut correlation and the saturated-pixel fraction on every clip. Suite **57 passed**.
 
+**Step 4c — appearance vs real video, and the stratified generator.** `scripts/compare_to_real.py` compares against real experimental video on the three things that survive the fact that the real frames are pre-stretched JPEGs (absolute intensity is *not* comparable): apparent particle size in px, radial power spectrum of I/mean, and frame-to-frame change. Also writes `real_video.gif` and a side-by-side GIF **cropped, never resized** — resizing to a common display size would rescale the very quantity under comparison.
+
+It found that our particles were **~3× larger than real in apparent pixels** (16.7 px radius vs 6.1). That matters specifically for a ViT: at 16×16 patches, real particles occupy under one patch and ours spanned ~2×2. Real data sat *outside* our distribution, which no amount of realism elsewhere would rescue.
+
+Fix: **two strata** (`sim/dataset.py:STRATA`), because "match the real experiment" and "measure physics precisely" genuinely conflict.
+- `physics` (4 in 5): 8–22 px particles, 6–16 of them, flux 2–75. Where Gate 1 and Gate 2 are decided — a probe failure here must mean the model can't do it, not that our estimator was too noisy to tell.
+- `experiment` (1 in 5): 5–8 px particles, ≤2 % coverage, flux 8–12. Weak statistics by construction; its only job is to put real imaging conditions inside the training distribution. Uses a smaller `growth_ratio` (2.0 vs 5.0) — at 5× a 6 px particle starts at 1.2 px, under the visibility floor, and the opening frames come out empty.
+
+Also added `MIN_VISIBLE_RADIUS_PX`: a particle too small to see is dropped from the ground truth rather than labelled as a target that isn't in the image.
+
+Result — apparent radius **5.6 px** (real 6.1) and frame-to-frame change **0.347** (real 0.397) on the experiment stratum. Suite **69 passed**.
+
+**Known residual, not closed.** At matched temporal noise our frames are spatially *smoother* than real: the ratio of temporal to spatial noise is 3.16 for us at every flux versus 1.67 real, and our high-frequency power sits ~10× low. Pure shot noise fixes that ratio, so the difference is spatial correlation — most likely the measured 512 px MTF over-blurring relative to the real 1024 px detector. Ruled out: JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60). A static-texture term was implemented and **reverted** — it cannot move an Immerkær estimate, which is by construction insensitive to structure. Report as a Tier-2 bound; static structure is the least harmful gap for a video predictor, since it does not change between frames.
+
+**Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
+
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
 ---

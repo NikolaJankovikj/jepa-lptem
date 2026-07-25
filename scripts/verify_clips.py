@@ -118,8 +118,14 @@ def main() -> None:
     print(f"[GT physics]   growth exponent alpha = {alpha:.3f}")
     print(f"[round-trip]   position error (matched): median {med_err:.2f}px  "
           f"(radii ~{np.nanmean(rad[alive]):.0f}px)")
+    stratum = str(d["stratum"]) if "stratum" in d else "?"
     print(f"[round-trip]   detector precision = {precision:.2f}  "
           f"(detected/true count ratio = {recall_ratio:.2f})")
+    if stratum == "experiment":
+        print("               ^ low precision is EXPECTED here: experiment-grade "
+              "clips have ~6px\n                 particles at real dose, below "
+              "what a threshold detector can resolve.\n                 That gap "
+              "is why SAM-EM needed a trained model in the first place.")
 
     # Shortcut check: how much of mean radius is readable off overall brightness
     # alone, with no localization? That is the trivial baseline any Gate-1 probe
@@ -168,7 +174,8 @@ def main() -> None:
     ax[1].set_xlabel("time"); ax[1].set_ylabel("mean radius (px)")
     ax[1].set_title(f"Growth: fitted alpha = {alpha:.3f}")
     r0v, rTv = rad[:, 0][rad[:, 0] > 0], rad[:, -1][rad[:, -1] > 0]
-    bins = np.linspace(0, max(rTv.max(), r0v.max()) + 2, 16)
+    present = np.concatenate([r0v, rTv]) if (r0v.size or rTv.size) else np.array([1.0])
+    bins = np.linspace(0, present.max() + 2, 16)
     ax[2].hist(r0v, bins=bins, alpha=0.6, label="t=0"); ax[2].hist(rTv, bins=bins, alpha=0.6, label="t=end")
     ax[2].set_xlabel("radius (px)"); ax[2].set_ylabel("count"); ax[2].legend(); ax[2].set_title("Size distribution")
     plt.tight_layout()

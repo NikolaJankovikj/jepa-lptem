@@ -23,9 +23,6 @@ from .dynamics import GROWTH_K, evolve_radii, ripen_population, simulate_brownia
 PROCESSES = ("ripening", "diffusion", "reaction", "static")
 EXPONENT = {"diffusion": 1 / 3, "reaction": 1 / 2, "static": 0.0, "ripening": None}
 
-# Fraction of the frame covered by gold at the clip's densest frame. Real LPTEM is
-# sparse; this keeps particles resolvable end to end. Drawn per clip for variety.
-AREA_FRACTION = (0.04, 0.09)
 # Final/initial radius over a clip for the growth modes. Large enough that the
 # asymptotic exponent dominates the finite-r0 offset, small enough that particles
 # are still several pixels wide at t=0 after the density rescale. Calibration knob:
@@ -33,19 +30,51 @@ AREA_FRACTION = (0.04, 0.09)
 GROWTH_RATIO = 5.0
 R0_UNITS = 2.0  # arbitrary pre-rescale radius unit; only the ratio matters
 
-# Imaging conditions, randomized per clip. Our estimate of the *real* conditions
-# comes from 12 JPEG-compressed frames of a single experiment, so fitting that
-# point estimate would overfit the simulator to someone's export settings. We
-# bracket it instead: real data lands inside the training distribution, which is
-# what actually buys transfer.
-#   beam_flux     electron dose -> shot noise. sigma/bg runs 0.27 (flux 2) to
-#                 0.06 (flux 75); real experimental frames measure 0.24.
-#                 Log-uniform, because noise scales as 1/sqrt(flux).
-#   pixel_size_nm nm per pixel = magnification. Sets how much gold a particle of a
-#                 given pixel radius represents, hence its contrast. Real
-#                 microscopists vary this shot to shot too.
-BEAM_FLUX_RANGE = (2.0, 75.0)
-PIXEL_SIZE_RANGE = (1.0, 4.0)
+# A particle smaller than this is not visible under shot noise, so labelling it as
+# present would hand the evaluation a target that is not in the image.
+MIN_VISIBLE_RADIUS_PX = 2.0
+
+# Two strata, because "match the real experiment" and "measure physics precisely"
+# pull in opposite directions and the dataset has to serve both.
+#
+#   physics     Enough particles, large enough, to estimate an MSD or a size
+#               distribution with tight error bars. This is where Gate 1 and
+#               Gate 2 are actually decided: if a probe fails here we need to
+#               know it failed because the model cannot do it, not because our
+#               estimator was too noisy to tell.
+#   experiment  Pinned to what we measured on real experimental video: ~6 px
+#               particles, under 2 % coverage, and a beam flux set from the
+#               *temporal* noise statistic (|dI|/mean ~0.40 -> flux ~8-12), which
+#               is what a video model actually consumes. Weak statistics per clip
+#               by construction -- its job is to put real imaging conditions
+#               *inside* the training distribution, not to measure anything.
+#
+# Known residual: at matched temporal noise our frames are spatially smoother
+# than real (ratio of temporal to spatial noise 3.16 for us, 1.67 real; our
+# high-frequency power spectrum sits ~10x low). Pure shot noise fixes that ratio,
+# so the difference is spatial correlation -- most likely the measured 512 px MTF
+# over-blurring relative to the real 1024 px detector. Not closed here; it is a
+# Tier-2 bound, and static structure is the least harmful kind of gap for a video
+# predictor since it does not change frame to frame. Ruled out as the cause:
+# JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60).
+#
+# Randomising over a range that brackets real data beats fitting a point estimate
+# of it: our picture of "real" is 75 frames of one Au-nanorod experiment, exported
+# by one person, and Step 13 also tests on a different (aggregation) condition.
+# What is NOT optional is coverage -- before this split our particles were ~3x
+# larger than real in apparent pixels, so real data sat outside our distribution
+# entirely, and no amount of realism elsewhere rescues that.
+STRATA = {
+    "physics": dict(radius_px=(8.0, 22.0), n=(6, 16), beam_flux=(2.0, 75.0),
+                    pixel_size_nm=(1.5, 4.0), max_coverage=0.09, growth_ratio=5.0),
+    # growth_ratio is smaller here because the clip *ends* around 6 px: at 5x the
+    # particle would start at 1.2 px, under the visibility floor, and the opening
+    # frames would contain no labelled particles at all. The exact time origin
+    # (growth_time_axis) keeps the exponent accurate over the shorter range.
+    "experiment": dict(radius_px=(5.0, 8.0), n=(3, 8), beam_flux=(8.0, 12.0),
+                       pixel_size_nm=(2.0, 4.0), max_coverage=0.02, growth_ratio=2.0),
+}
+EXPERIMENT_EVERY = 5  # one clip in five is experiment-grade
 
 
 def growth_time_axis(mode: str, r0: float, n_steps: int, ratio: float = GROWTH_RATIO):
@@ -74,31 +103,49 @@ def growth_time_axis(mode: str, r0: float, n_steps: int, ratio: float = GROWTH_R
     return t0, t0 * (ratio ** (1 / EXPONENT[mode]) - 1) / max(n_steps - 1, 1)
 
 
-def rescale_to_density(radii: np.ndarray, image_size, frac: float) -> np.ndarray:
-    """Scale all radii so peak gold coverage is ``frac`` of the frame.
+def rescale_to_apparent_size(radii: np.ndarray, image_size, target_radius_px: float,
+                             max_coverage: float) -> np.ndarray:
+    """Scale radii to a target apparent size, backing off if that would overcrowd.
 
-    Applied to the whole ``(N, T)`` array by a single constant, so it changes the
-    pixel size of the physics and nothing else: the log-log growth slope and the
-    MSD are both invariant under a uniform rescale of radius. Normalizing at the
-    *densest* frame (not the last) means ripening, which conserves mass while the
-    count drops, is bounded at t=0 where it is fullest.
+    Apparent size *in pixels* is the knob that matters, because V-JEPA tokenizes
+    into 16x16 patches: a particle spanning half a patch and one spanning four are
+    different problems however correct the nanometres are. So the target is the
+    largest radius in the clip, with peak coverage as a safety rail rather than the
+    primary control (the other way round, apparent size fell out of whatever count
+    was drawn, and drifted 3x above real data).
+
+    One constant scales the whole ``(N, T)`` array, so nothing about the physics
+    moves: log-log growth slope and MSD are invariant under a uniform rescale of
+    radius. Coverage is checked at the *densest* frame, which for mass-conserving
+    ripening is t=0.
     """
-    peak_area = float(np.pi * (radii ** 2).sum(axis=0).max())
-    if peak_area <= 0:
+    peak_radius = float(radii.max())
+    if peak_radius <= 0:
         return radii
-    return radii * np.sqrt(frac * image_size[0] * image_size[1] / peak_area)
+    scale = target_radius_px / peak_radius
+    peak_area = float(np.pi * ((radii * scale) ** 2).sum(axis=0).max())
+    cap = max_coverage * image_size[0] * image_size[1]
+    if peak_area > cap:
+        scale *= np.sqrt(cap / peak_area)
+    return radii * scale
 
 
-def build_clip(process: str, n_frames: int, size: tuple[int, int], rng: np.random.Generator):
+def build_clip(process: str, n_frames: int, size: tuple[int, int],
+               rng: np.random.Generator, stratum: str = "physics"):
     """Return ``(positions_t, radii_t, meta, pos, radii)`` for one clip.
 
     ``positions_t``/``radii_t`` are the per-frame lists the renderer consumes;
     ``pos`` ``(N, T, 2)`` and ``radii`` ``(N, T)`` are the same data as arrays,
     saved verbatim as the ground truth. ``meta`` carries the physical parameters
-    the evaluation needs to grade against (``D``, ``exponent``, ``dt_growth``).
+    the evaluation needs to grade against (``D``, ``exponent``, ``t0_growth``,
+    ``dt_growth``) plus the imaging conditions the renderer needs.
+
+    ``stratum`` selects a row of :data:`STRATA`: ``"physics"`` for clips sized to
+    measure on, ``"experiment"`` for clips pinned to real imaging conditions.
     """
+    cfg = STRATA[stratum]
     h, w = size
-    n = int(rng.integers(6, 16))
+    n = int(rng.integers(*cfg["n"]))
     margin = 0.15 * min(h, w)
     init_pos = rng.uniform(margin, min(h, w) - margin, (n, 2))
     D = float(rng.uniform(1.0, 4.0))  # px^2 per frame
@@ -111,15 +158,21 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int], rng: np.rando
                                  K=6.0, min_radius=3.0)[1]
     elif process in ("diffusion", "reaction"):
         r0 = rng.uniform(0.8 * R0_UNITS, 1.2 * R0_UNITS, n)
-        t0_growth, dt_growth = growth_time_axis(process, float(r0.mean()), n_frames)
+        t0_growth, dt_growth = growth_time_axis(process, float(r0.mean()), n_frames,
+                                                ratio=cfg["growth_ratio"])
         radii = evolve_radii(r0, n_steps=n_frames, dt=dt_growth, mode=process)[1]
     else:  # static: fixed radii, pure diffusion of position
         radii = np.tile(rng.uniform(8.0, 16.0, (n, 1)), (1, n_frames))
 
-    radii = rescale_to_density(radii, size, float(rng.uniform(*AREA_FRACTION)))
-    meta = {"process": process, "exponent": EXPONENT[process], "n_particles": n,
-            "D": D, "t0_growth": t0_growth, "dt_growth": dt_growth,
-            "beam_flux": float(np.exp(rng.uniform(*np.log(BEAM_FLUX_RANGE)))),
-            "pixel_size_nm": float(rng.uniform(*PIXEL_SIZE_RANGE))}
+    radii = rescale_to_apparent_size(radii, size, float(rng.uniform(*cfg["radius_px"])),
+                                     cfg["max_coverage"])
+    # A particle below the visibility floor is gone as far as the image is
+    # concerned, so drop it from the ground truth rather than label a target that
+    # is not there. Only ripening reaches this, on its dissolving tail.
+    radii[radii < MIN_VISIBLE_RADIUS_PX] = 0.0
+    meta = {"process": process, "stratum": stratum, "exponent": EXPONENT[process],
+            "n_particles": n, "D": D, "t0_growth": t0_growth, "dt_growth": dt_growth,
+            "beam_flux": float(np.exp(rng.uniform(*np.log(cfg["beam_flux"])))),
+            "pixel_size_nm": float(rng.uniform(*cfg["pixel_size_nm"]))}
     return [pos[:, i, :] for i in range(n_frames)], [radii[:, i] for i in range(n_frames)], \
         meta, pos, radii
