@@ -30,6 +30,7 @@ import cv2
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import animation
 import numpy as np
 
 from verify_clips import detect_dark_blobs
@@ -86,13 +87,52 @@ def temporal_delta(frames):
     return float(np.abs(np.diff(frames, axis=0)).mean() / frames.mean())
 
 
+def centre_crop(frames, size=512):
+    """Crop to a common pixel window -- NOT a resize.
+
+    Resizing to a common display size would silently rescale apparent particle
+    size, which is the very quantity being compared. Cropping keeps one pixel
+    meaning one pixel in every panel.
+    """
+    if frames.shape[1] <= size:
+        return frames
+    top = (frames.shape[1] - size) // 2
+    left = (frames.shape[2] - size) // 2
+    return frames[:, top:top + size, left:left + size]
+
+
+def write_gif(panels, path, n_frames=40, fps=7, suptitle=None):
+    """Animate one or more equally-sized frame stacks side by side."""
+    n = min([n_frames] + [len(f) for _, f in panels])
+    fig, axes = plt.subplots(1, len(panels), figsize=(4.2 * len(panels), 4.6))
+    axes = np.atleast_1d(axes)
+    ims = []
+    for ax, (name, fr) in zip(axes, panels):
+        ims.append(ax.imshow(fr[0], cmap="gray"))
+        ax.set_title(name, fontsize=9)
+        ax.axis("off")
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=10)
+
+    def upd(k):
+        for im, (_, fr) in zip(ims, panels):
+            im.set_data(fr[k % len(fr)])
+        return ims
+
+    anim = animation.FuncAnimation(fig, upd, frames=n, interval=1000 // fps, blit=True)
+    anim.save(path, writer=animation.PillowWriter(fps=fps))
+    plt.close(fig)
+    print(f"[wrote] {path}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("data/synthetic/smoke"))
+    ap.add_argument("--no-gif", action="store_true")
     args = ap.parse_args()
 
     real = load_sequence("data/sam-em/experimentalAuNanorods.zip",
-                         lambda x: x.endswith(".jpeg"))
+                         lambda x: x.endswith(".jpeg"), limit=75)
     theirs = load_sequence("data/sam-em/ablationValidationSet.zip",
                            lambda x: "/jpeg_images/" in x and x.endswith(".jpg"))
     clips = sorted(glob.glob(str(args.out / "*.npz")))
@@ -143,6 +183,19 @@ def main() -> None:
     path = args.out / "compare_to_real.png"
     plt.savefig(path, dpi=110, bbox_inches="tight")
     print(f"\n[wrote] {path}")
+
+    if args.no_gif:
+        return
+    # Real video on its own, full field of view.
+    write_gif([("REAL experimental Au nanorods  (1024x1024)", real)],
+              args.out / "real_video.gif", n_frames=75)
+    # Side by side at MATCHED PIXEL SCALE: 512 px cropped from each, never resized,
+    # so a particle that looks bigger really is bigger in the pixels the model sees.
+    write_gif([("REAL (512px crop)", centre_crop(real)),
+               ("THEIRS (512px crop)", centre_crop(theirs)),
+               ("OURS (512px native)", ours)],
+              args.out / "compare_side_by_side.gif",
+              suptitle="matched pixel scale -- cropped, not resized")
 
 
 if __name__ == "__main__":
