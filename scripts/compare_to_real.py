@@ -1,54 +1,149 @@
-"""D. Empirical oracle: our frames vs (i) real experimental LPTEM, (ii) the Jamali
-lab's OWN synthetic frames from the same simulator. Both are external references."""
-import glob, zipfile, collections
-import numpy as np, cv2
-from jepa_lptem.sim.render_bridge import draw_spheres, render_frame
+"""How does our synthetic video compare to real LPTEM video?
+
+Three comparisons, chosen because they survive the one thing we cannot undo:
+the real frames are 8-bit JPEGs that someone already contrast-stretched, so
+*absolute* intensity is not comparable. These are not.
+
+1. Apparent particle size, in pixels. The single most important appearance
+   parameter for a ViT: V-JEPA tokenizes into 16x16 patches, so a particle
+   spanning 2 patches and one spanning 6 are different problems regardless of
+   how physically correct the nanometres are.
+2. Radial power spectrum of I / mean(I). Scale-free and stretch-invariant.
+   The high-frequency plateau is the noise floor; the low-frequency bump is
+   particle structure. One curve carries both.
+3. Frame-to-frame difference. Real LPTEM video changes enormously between
+   frames -- almost all of it shot noise, not motion. This is what a video
+   model actually sees, and single-frame statistics say nothing about it.
+
+Usage:
+    uv run python scripts/compare_to_real.py [--out data/synthetic/smoke]
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import re
+import zipfile
+from pathlib import Path
+
+import cv2
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+from verify_clips import detect_dark_blobs
 
 
-def load(zpath, pred, k=12):
-    zf = zipfile.ZipFile(zpath)
+def load_sequence(zip_path, pred, limit=40):
+    """Decode a frame sequence from a zip, ordered by trailing frame number."""
+    zf = zipfile.ZipFile(zip_path)
+    names = sorted((x for x in zf.namelist() if pred(x)),
+                   key=lambda s: int(re.findall(r"(\d+)", s)[-1]))
     out = []
-    for n in [x for x in zf.namelist() if pred(x)][:k]:
+    for n in names[:limit]:
         a = cv2.imdecode(np.frombuffer(zf.read(n), np.uint8), cv2.IMREAD_GRAYSCALE)
         if a is not None:
             out.append(a.astype(float))
-    return out
+    return np.stack(out) if out else np.zeros((0, 1, 1))
 
 
-def stats(img):
-    """Detector-free descriptors: contrast, and the noise/particle scale separation."""
-    bg = np.percentile(img, 90)          # background is the bright majority
-    fg = np.percentile(img, 2)           # particles are the dark tail
-    contrast = (bg - fg) / (bg + fg + 1e-9)
-    # local per-pixel noise: std of the Laplacian, robust to slow illumination drift
-    noise = float(np.std(cv2.Laplacian(img.astype(np.float32), cv2.CV_32F)))
-    return contrast, noise / (bg + 1e-9)
+def radial_psd(frames, k=8):
+    """Azimuthally averaged power spectrum of I/mean(I), vs cycles per pixel.
+
+    Averaged over frames: a single frame from one clip would report whichever
+    beam flux that clip happened to draw, not the distribution we generate.
+    """
+    profs = [_one_psd(f) for f in frames[:k]]
+    freq = np.arange(len(profs[0])) / min(frames.shape[1:])
+    return freq, np.mean(profs, axis=0)
 
 
-real = load("data/sam-em/experimentalAuNanorods.zip", lambda x: x.endswith(".jpeg"))
-theirsyn = load("data/sam-em/ablationValidationSet.zip",
-                lambda x: "/jpeg_images/" in x and x.endswith(".jpg"))
-ours = [np.load(f)["frames"] for f in sorted(glob.glob("data/synthetic/smoke/*.npz"))]
-ours = [v[len(v) // 2].astype(float) for v in ours]
+def _one_psd(frame):
+    f = frame / frame.mean()
+    p = np.abs(np.fft.fftshift(np.fft.fft2(f - f.mean()))) ** 2
+    h, w = p.shape
+    yy, xx = np.mgrid[:h, :w]
+    r = np.hypot(yy - h // 2, xx - w // 2).astype(int)
+    nbins = min(h, w) // 2
+    return np.bincount(r.ravel(), p.ravel())[:nbins] / np.bincount(r.ravel())[:nbins]
 
-print(f"{'source':32s} {'n':>3s} {'contrast':>10s} {'rel.noise':>10s}")
-for name, imgs in (("REAL experimental Au nanorods", real),
-                   ("THEIR synthetic (LPTEMsimulator)", theirsyn),
-                   ("OURS (smoke clips)", ours)):
-    if not imgs:
-        print(f"{name:32s}  -- none loaded --"); continue
-    c = np.array([stats(i) for i in imgs])
-    print(f"{name:32s} {len(imgs):3d} {c[:,0].mean():10.3f} {c[:,1].mean():10.3f}")
 
-print()
-print("PHYSICAL optical depth (pre-normalisation, no noise, our renderer):")
-for label, gold in (("upstream flat 9 nm nanorod", 9.0),
-                    ("our 20 px sphere, centre", None),
-                    ("our 20 px sphere, mean over disk", None)):
-    pass
-_, g = draw_spheres([[256, 256]], [20.0], (512, 512), pixel_size_nm=2.0)
-p = render_frame(g, mtf=None, add_noise=False)
-p9 = render_frame(np.where(g > 0, 9.0, 0.0), mtf=None, add_noise=False)
-print(f"  background                 {p.max():8.2f}")
-print(f"  our sphere centre (80 nm)  {p.min():8.2f}   depth {100*(1-p.min()/p.max()):5.1f}%")
-print(f"  flat 9 nm rod (upstream)   {p9.min():8.2f}   depth {100*(1-p9.min()/p9.max()):5.1f}%")
+def apparent_radius_px(frames, k=12):
+    """Median equivalent-disk radius of detected dark blobs, in pixels."""
+    radii = []
+    for fr in frames[:k]:
+        _, lab = detect_dark_blobs(fr)
+        areas = np.bincount(lab.ravel())[1:]
+        radii += [np.sqrt(a / np.pi) for a in areas if a >= 80]
+    return float(np.median(radii)) if radii else float("nan")
+
+
+def temporal_delta(frames):
+    """Mean |I(t+1) - I(t)| relative to the mean level -- what a video model sees."""
+    if len(frames) < 2:
+        return float("nan")
+    return float(np.abs(np.diff(frames, axis=0)).mean() / frames.mean())
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", type=Path, default=Path("data/synthetic/smoke"))
+    args = ap.parse_args()
+
+    real = load_sequence("data/sam-em/experimentalAuNanorods.zip",
+                         lambda x: x.endswith(".jpeg"))
+    theirs = load_sequence("data/sam-em/ablationValidationSet.zip",
+                           lambda x: "/jpeg_images/" in x and x.endswith(".jpg"))
+    clips = sorted(glob.glob(str(args.out / "*.npz")))
+    ours = np.concatenate([np.load(f)["frames"][:8].astype(float) for f in clips])
+    fluxes = [float(np.load(f)["beam_flux"]) for f in clips]
+
+    sources = [("REAL experimental", real), ("THEIRS (LPTEMsimulator)", theirs),
+               ("OURS", ours)]
+    print(f"{'source':26s} {'n':>4s} {'size':>12s} {'radius px':>10s} {'|dI|/mean':>11s}")
+    for name, fr in sources:
+        print(f"{name:26s} {len(fr):4d} {str(fr.shape[1:]):>12s} "
+              f"{apparent_radius_px(fr):10.1f} {temporal_delta(fr):11.3f}")
+    print(f"\n  our clips span beam_flux {min(fluxes):.1f}-{max(fluxes):.1f}")
+    print("  NOTE: absolute intensity is NOT comparable -- the real frames are "
+          "JPEGs that\n        were already contrast-stretched. Only shape, scale "
+          "and dynamics are.")
+
+    fig = plt.figure(figsize=(14, 8))
+    for i, (name, fr) in enumerate(sources):
+        ax = fig.add_subplot(2, 3, i + 1)
+        ax.imshow(fr[0], cmap="gray")
+        ax.set_title(f"{name}\n{fr.shape[1]}x{fr.shape[2]}", fontsize=9)
+        ax.axis("off")
+
+    ax = fig.add_subplot(2, 3, 4)
+    for name, fr in sources:
+        f, p = radial_psd(fr)
+        ax.loglog(f[1:], p[1:], label=name, lw=1.4)
+    ax.set_xlabel("cycles / pixel"); ax.set_ylabel("power (I/mean)")
+    ax.set_title("Radial power spectrum", fontsize=10); ax.legend(fontsize=7)
+
+    ax = fig.add_subplot(2, 3, 5)
+    for name, fr in sources:
+        d = np.abs(np.diff(fr[:12], axis=0)).ravel() / fr.mean()
+        ax.hist(d, bins=60, range=(0, 1.2), histtype="step", density=True, label=name)
+    ax.set_xlabel("|I(t+1) - I(t)| / mean"); ax.set_ylabel("density")
+    ax.set_title("Frame-to-frame change", fontsize=10); ax.legend(fontsize=7)
+
+    ax = fig.add_subplot(2, 3, 6)
+    for name, fr in sources:
+        v = (fr[0] / fr[0].mean()).ravel()
+        ax.hist(v, bins=80, range=(0, 2.2), histtype="step", density=True, label=name)
+    ax.set_xlabel("I / mean"); ax.set_ylabel("density")
+    ax.set_title("Intensity distribution (stretch-normalised)", fontsize=10)
+    ax.legend(fontsize=7)
+
+    plt.tight_layout()
+    path = args.out / "compare_to_real.png"
+    plt.savefig(path, dpi=110, bbox_inches="tight")
+    print(f"\n[wrote] {path}")
+
+
+if __name__ == "__main__":
+    main()
