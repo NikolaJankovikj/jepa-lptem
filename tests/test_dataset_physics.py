@@ -6,8 +6,9 @@ This is the automated half: it asserts that the *ground truth* coming out of
 tweak to `dynamics.py` or to the generation parameters fails here rather than
 silently poisoning a 50 GB overnight run on the remote.
 
-Pixel-level correctness is covered separately by `tests/test_render_bridge.py`;
-these tests deliberately skip rendering so they stay fast and deterministic.
+Pixel-level correctness is covered separately by `tests/test_render_bridge.py`, so
+most of these skip rendering and stay fast. The exception is the brightness-leak
+test, which has to look at actual pixels to see the leak at all.
 """
 
 import numpy as np
@@ -15,6 +16,7 @@ import pytest
 
 from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
 from jepa_lptem.sim.dataset import PROCESSES, build_clip
+from jepa_lptem.sim.render_bridge import render_video, to_uint8
 
 
 @pytest.mark.parametrize("process,expected", [("diffusion", 1 / 3), ("reaction", 1 / 2)])
@@ -57,3 +59,25 @@ def test_particles_are_several_pixels_wide_in_every_frame(process):
     _, _, _, _, radii = build_clip(process, 48, (512, 512), rng)
     alive = radii[radii > 0]
     assert alive.min() >= 2.0, f"{process}: smallest radius {alive.min():.2f}px"
+
+
+@pytest.mark.parametrize("process", ["diffusion", "reaction"])
+def test_global_brightness_does_not_leak_particle_size(process):
+    """Overall frame brightness must track particle size the way physics says.
+
+    Growing particles add gold, so the frame gets *darker* -- a negative
+    correlation. The per-clip min-max normalisation this replaced inverted that
+    to +0.72, meaning a Gate-1 probe could read mean radius off overall brightness
+    with the sign the physics does not have. That is a label leak from the save
+    path, and it lived on exactly the two modes where the growth exponent is the
+    headline result.
+    """
+    rng = np.random.default_rng(4)
+    positions_t, radii_t, meta, _, radii = build_clip(process, 16, (128, 128), rng)
+    video = render_video(positions_t, radii_t, (128, 128),
+                         pixel_size_nm=meta["pixel_size_nm"],
+                         beam_flux=meta["beam_flux"], rng=rng)
+    frames = np.stack([to_uint8(f, beam_flux=meta["beam_flux"]) for f in video])
+    mean_r = radii.mean(axis=0)
+    corr = np.corrcoef(mean_r, frames.reshape(16, -1).mean(axis=1))[0, 1]
+    assert corr < 0, f"{process}: corr={corr:+.3f} -- brightness leaks size"

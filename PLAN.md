@@ -143,6 +143,23 @@ Two probe types, matching the V-JEPA attentive-readout protocol (frozen features
 2. **Uncontrolled density.** Particle count was drawn independently of final size, so growth clips reached ~48 px radii at ~35 % gold coverage — heavy overlap, and *the ground truth stops being recoverable from the frame*, which would make any Gate-1 failure uninterpretable. `rescale_to_density` now scales all radii by one constant so peak coverage hits a target 4–9 % (log-log slope and MSD are both invariant under a uniform radius rescale). Round-trip error on the diffusion clip: 27.65 px → **0.53 px**.
 3. **Two exponent biases, both real physics bugs, not tuning.** (a) *Wrong time origin* — a particle of radius `r0` is not newly nucleated, it already has age `r0³/3K`; labelling frame 0 as `t=0` flattened reaction to 0.43. `growth_time_axis` now returns `(t0, dt)` and the clip carries `t0_growth` in its metadata. (b) *Integrator error* — `evolve_radii` was single-step forward Euler, and `dr/dt = K/r²` moved the radius 65 % in one frame at small `r`, so the measured exponent was the integrator rather than the physics. Added `substeps` (default 10, matching `ripen_population`). Combined: diffusion 0.304 → **0.3318**, reaction 0.433 → **0.4993**.
 
+**Step 4b — imaging realism + the normalisation leak.** Prompted by asking how our frames actually compare to real LPTEM, measured with `scripts/compare_to_real.py` (Immerkær noise estimator, edge-insensitive):
+
+| source | σ/background | note |
+|---|---|---|
+| REAL experimental Au nanorods | 0.238 | JPEG-compressed, unknown preprocessing |
+| THEIR synthetic (LPTEMsimulator) | 0.063 | matches our flux=75 prediction to 3 decimals |
+| OURS (was, flux=30) | 0.074 | |
+
+Two fixes, one of them a correctness bug:
+
+1. **Per-clip min–max normalisation was leaking the label.** `normalize_uint8` stretched every clip to 0–255, which (a) erased absolute contrast — a 32 nm particle (25 % attenuation) and a 160 nm one (77 %) saved identically — and (b) made overall frame brightness correlate with mean radius at **+0.72/+0.77 on the growth modes, with the sign inverted from the real physics**. A Gate-1 probe could have read mean radius off global brightness without ever localising a particle, on exactly the two modes where the growth exponent is the headline result. Replaced by `to_uint8`, which divides by the analytically known background (`background_intensity`) — one fixed scale for the whole dataset, dose-independent, background at 64/255 for 4× noise headroom. Correlations are now **−0.74/−0.97** (physical attenuation). Ripening reads +0.41, which *is* physical: mass-conserving coarsening shrinks total projected area.
+2. **Imaging conditions randomised, not fitted.** `beam_flux` log-uniform over 2–75 (σ/bg 0.27→0.06, bracketing real 0.238) and `pixel_size_nm` 1–4 (magnification, which sets contrast). Fitting the point estimate would overfit the simulator to 12 JPEG frames of one experiment; bracketing puts real data inside the training distribution. Both recorded per clip in the manifest → gives the **physics-recovery-vs-dose** ablation figure for free.
+
+Not closable at any parameter setting: real LPTEM's structural texture (SiNx granularity, contamination, radiolysis bubbles, drift). State this as the Tier-2 bound.
+
+`scripts/verify_clips.py` now reports the brightness-shortcut correlation and the saturated-pixel fraction on every clip. Suite **57 passed**.
+
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
 ---

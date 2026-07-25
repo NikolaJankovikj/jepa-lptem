@@ -17,8 +17,8 @@ Two separable pieces:
   attenuation through a gold/water/SiNx thickness stack, Poisson shot noise plus
   Gaussian read noise, and an optional MTF (microscope transfer function) blur.
 
-``render_video`` stitches per-frame renders; ``normalize_uint8`` is a display
-helper for saving previews.
+``render_video`` stitches per-frame renders; ``to_uint8`` quantizes them against
+the analytically known background so absolute contrast survives to disk.
 """
 
 from __future__ import annotations
@@ -187,10 +187,44 @@ def render_video(
     return np.stack(frames, axis=0)
 
 
-def normalize_uint8(x: np.ndarray) -> np.ndarray:
-    """Min--max scale to ``[0, 255]`` uint8 for saving/preview (per-array)."""
-    x = np.asarray(x, dtype=float)
-    lo, hi = float(x.min()), float(x.max())
-    if hi <= lo:
-        return np.zeros_like(x, dtype=np.uint8)
-    return np.round((x - lo) / (hi - lo) * 255.0).astype(np.uint8)
+BACKGROUND_LEVEL = 64  # uint8 value a particle-free pixel maps to
+
+
+def background_intensity(
+    *,
+    beam_flux: float = BEAM_FLUX,
+    thickness_water: float = THICKNESS_WATER,
+    thickness_cell: float = THICKNESS_CELL,
+    imfp_water: float = IMFP_WATER,
+    imfp_sinx: float = IMFP_SINX,
+    conversion_factor: float = CONVERSION_FACTOR,
+) -> float:
+    """Intensity of a particle-free pixel: pure water plus both SiNx walls.
+
+    Known in closed form, which is what makes :func:`to_uint8` a *fixed* scale.
+    """
+    optical_depth = thickness_water / imfp_water + 2.0 * thickness_cell / imfp_sinx
+    return float(beam_flux * np.exp(-optical_depth) * conversion_factor)
+
+
+def to_uint8(img: np.ndarray, **background_kwargs) -> np.ndarray:
+    """Quantize to uint8 against the analytic background, not a min--max stretch.
+
+    A per-frame min--max stretch would rescale every clip to span 0--255, which
+    **erases absolute contrast**: a 32 nm particle (25 % attenuation) and a 160 nm
+    one (77 %) come out looking identical. Worse, the stretch depends on the
+    darkest pixel, so overall brightness ends up correlated with particle size --
+    a label leak a probe can exploit without ever locating a particle, and with the
+    sign inverted relative to the real physics.
+
+    Dividing by the known background instead gives transmittance (1.0 = clean
+    water) on one fixed scale for the whole dataset, independent of dose. Values
+    above 1.0 are noise excursions, so ``BACKGROUND_LEVEL`` sits at 64 rather than
+    mid-range: 4x headroom keeps clipping under 1 % even at the lowest dose we
+    generate (~0.4 electrons per pixel), where the raw frame is nearly binary
+    before the MTF averages it. The coarser scale costs nothing -- one quantization
+    step stays far below the shot noise at every flux in ``BEAM_FLUX_RANGE``.
+    """
+    background = background_intensity(**background_kwargs)
+    scaled = np.asarray(img, dtype=float) / background * BACKGROUND_LEVEL
+    return np.clip(np.round(scaled), 0, 255).astype(np.uint8)

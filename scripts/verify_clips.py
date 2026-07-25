@@ -121,6 +121,21 @@ def main() -> None:
     print(f"[round-trip]   detector precision = {precision:.2f}  "
           f"(detected/true count ratio = {recall_ratio:.2f})")
 
+    # Shortcut check: how much of mean radius is readable off overall brightness
+    # alone, with no localization? That is the trivial baseline any Gate-1 probe
+    # must beat. The sign is diagnostic, but the physical sign is mode-dependent:
+    # growing particles add gold, so the frame darkens (negative). Ripening
+    # conserves mass while coarsening, which *shrinks* total projected area, so
+    # the frame brightens (positive). A positive value on a growth mode is the
+    # signature of the min-max normalisation leak this pipeline no longer has.
+    gmean = frames.reshape(T, -1).mean(axis=1)[m]
+    leak = float(np.corrcoef(meanr[m], gmean)[0, 1]) if m.sum() > 2 else float("nan")
+    clipped = float((frames >= 255).mean())
+    print(f"[shortcut]     corr(mean_radius, frame_mean) = {leak:+.3f}"
+          f"   (expect < 0 for growth modes)")
+    print(f"[render]       saturated pixels = {100 * clipped:.2f}%  "
+          f"flux={float(d['beam_flux']) if 'beam_flux' in d else float('nan'):.1f}")
+
     # --- overlay GIF: rendered frame + GT circle + GT centroid + detections -------
     fig, ax = plt.subplots(figsize=(5, 5)); ax.axis("off")
     im = ax.imshow(frames[0], cmap="gray", vmin=0, vmax=255)

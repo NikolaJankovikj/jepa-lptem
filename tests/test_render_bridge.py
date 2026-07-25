@@ -4,7 +4,9 @@ from jepa_lptem.sim.render_bridge import (
     draw_spheres,
     render_frame,
     render_video,
-    normalize_uint8,
+    to_uint8,
+    background_intensity,
+    BACKGROUND_LEVEL,
 )
 
 
@@ -122,14 +124,42 @@ def test_render_video_particle_darker_each_frame():
         assert frame[16, 16] < frame[0, 0]
 
 
-# --- uint8 helper for saving / visualization ----------------------------------
+# --- uint8 quantization against the analytic background -----------------------
 
-def test_normalize_uint8_spans_full_range():
-    x = np.array([[1.0, 2.0], [3.0, 5.0]])
-    u = normalize_uint8(x)
-    assert u.dtype == np.uint8
-    assert u.min() == 0
-    assert u.max() == 255
+def _disk_gold(radius_px, pixel_size_nm=2.0):
+    _, gold = draw_spheres([[64.0, 64.0]], [float(radius_px)], (128, 128),
+                           pixel_size_nm=pixel_size_nm)
+    return gold
+
+
+def test_to_uint8_puts_background_at_a_fixed_level_regardless_of_dose():
+    # A fixed scale is the whole point: clean water must land on the same value
+    # whatever the electron dose, or clips are not comparable to each other.
+    for flux in (2.0, 30.0, 75.0):
+        img = render_frame(np.zeros((16, 16)), beam_flux=flux, add_noise=False)
+        u = to_uint8(img, beam_flux=flux)
+        assert np.all(u == BACKGROUND_LEVEL)
+
+
+def test_to_uint8_preserves_absolute_contrast_between_particle_sizes():
+    # The bug this replaced: a per-frame min-max stretch mapped every clip to
+    # 0-255, so a thin particle and a thick one came out identical.
+    small = to_uint8(render_frame(_disk_gold(8), add_noise=False))
+    large = to_uint8(render_frame(_disk_gold(32), add_noise=False))
+    assert small[64, 64] > large[64, 64]  # more gold -> genuinely darker on disk
+    assert small.max() == large.max() == BACKGROUND_LEVEL  # background is shared
+
+
+def test_to_uint8_leaves_fourfold_headroom_above_background():
+    # Clipping is a nonlinearity that breaks the Beer-Lambert relation we grade
+    # against. Putting the background at 64 of 255 buys a 4x upward excursion
+    # before a pixel saturates -- what the near-binary lowest-dose frames need.
+    # (The realized clipping fraction on generated clips is reported by
+    # scripts/verify_clips.py, where the real MTF is in play.)
+    bg = background_intensity(beam_flux=2.0)
+    assert to_uint8(np.array([[bg]]), beam_flux=2.0)[0, 0] == BACKGROUND_LEVEL
+    assert to_uint8(np.array([[3.9 * bg]]), beam_flux=2.0)[0, 0] < 255
+    assert to_uint8(np.array([[4.1 * bg]]), beam_flux=2.0)[0, 0] == 255
 
 
 def test_render_frame_matches_upstream_lptemsimulator_reference():

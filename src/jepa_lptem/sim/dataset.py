@@ -33,6 +33,20 @@ AREA_FRACTION = (0.04, 0.09)
 GROWTH_RATIO = 5.0
 R0_UNITS = 2.0  # arbitrary pre-rescale radius unit; only the ratio matters
 
+# Imaging conditions, randomized per clip. Our estimate of the *real* conditions
+# comes from 12 JPEG-compressed frames of a single experiment, so fitting that
+# point estimate would overfit the simulator to someone's export settings. We
+# bracket it instead: real data lands inside the training distribution, which is
+# what actually buys transfer.
+#   beam_flux     electron dose -> shot noise. sigma/bg runs 0.27 (flux 2) to
+#                 0.06 (flux 75); real experimental frames measure 0.24.
+#                 Log-uniform, because noise scales as 1/sqrt(flux).
+#   pixel_size_nm nm per pixel = magnification. Sets how much gold a particle of a
+#                 given pixel radius represents, hence its contrast. Real
+#                 microscopists vary this shot to shot too.
+BEAM_FLUX_RANGE = (2.0, 75.0)
+PIXEL_SIZE_RANGE = (1.0, 4.0)
+
 
 def growth_time_axis(mode: str, r0: float, n_steps: int, ratio: float = GROWTH_RATIO):
     """Return ``(t0, dt)``: the clip's true time origin and timestep.
@@ -104,6 +118,8 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int], rng: np.rando
 
     radii = rescale_to_density(radii, size, float(rng.uniform(*AREA_FRACTION)))
     meta = {"process": process, "exponent": EXPONENT[process], "n_particles": n,
-            "D": D, "t0_growth": t0_growth, "dt_growth": dt_growth}
+            "D": D, "t0_growth": t0_growth, "dt_growth": dt_growth,
+            "beam_flux": float(np.exp(rng.uniform(*np.log(BEAM_FLUX_RANGE)))),
+            "pixel_size_nm": float(rng.uniform(*PIXEL_SIZE_RANGE))}
     return [pos[:, i, :] for i in range(n_frames)], [radii[:, i] for i in range(n_frames)], \
         meta, pos, radii

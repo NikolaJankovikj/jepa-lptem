@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from jepa_lptem.sim.dataset import PROCESSES, build_clip
-from jepa_lptem.sim.render_bridge import normalize_uint8, render_video
+from jepa_lptem.sim.render_bridge import render_video, to_uint8
 
 
 def main() -> None:
@@ -57,8 +57,12 @@ def main() -> None:
         for i in range(args.n_videos):
             process = args.processes[i % len(args.processes)]
             positions_t, radii_t, meta, pos, radii = build_clip(process, args.n_frames, size, rng)
-            video = render_video(positions_t, radii_t, size, mtf=mtf, rng=rng)
-            frames = np.stack([normalize_uint8(f) for f in video])  # per-clip contrast
+            video = render_video(positions_t, radii_t, size, mtf=mtf, rng=rng,
+                                 pixel_size_nm=meta["pixel_size_nm"],
+                                 beam_flux=meta["beam_flux"])
+            # one fixed physical scale for the whole dataset, so absolute contrast
+            # survives and overall brightness cannot leak particle size
+            frames = np.stack([to_uint8(f, beam_flux=meta["beam_flux"]) for f in video])
 
             name = f"clip_{i:04d}_{process}.npz"
             np.savez_compressed(args.out / name, frames=frames, positions=pos, radii=radii,
@@ -66,7 +70,8 @@ def main() -> None:
             record = {"file": name, **meta, "shape": list(frames.shape)}
             mf.write(json.dumps(record) + "\n")
             print(f"[{i + 1}/{args.n_videos}] {name}  frames {frames.shape}  "
-                  f"process={process} N={meta['n_particles']}")
+                  f"process={process} N={meta['n_particles']}  "
+                  f"flux={meta['beam_flux']:.1f} px={meta['pixel_size_nm']:.1f}nm")
 
     print(f"\nWrote {args.n_videos} clips + manifest to {args.out}")
 
