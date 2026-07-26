@@ -34,6 +34,23 @@ R0_UNITS = 2.0  # arbitrary pre-rescale radius unit; only the ratio matters
 # present would hand the evaluation a target that is not in the image.
 MIN_VISIBLE_RADIUS_PX = 2.0
 
+# Diffusion is set by how far a particle moves *relative to its own radius* per
+# frame, not by an absolute D. Real experimental video measures ~1.5 radii/frame
+# (apparent 10.6 px at 6.1 px radius, minus a 4.8 px centroid-jitter floor measured
+# on a frozen-particle control; coherent stage drift accounts for only 7 %).
+#
+# This is not cosmetic. At the 0.3 radii/frame we had, persistence -- predict the
+# last position -- is already an excellent predictor, so the Gate-2 comparison
+# against persistence would have been uninformative on position, and MSD would sit
+# barely above the centroid-noise floor. It also changes the learning problem: at
+# ~10 px/frame a particle crosses 16 px patch boundaries constantly, which is a
+# different task from one drifting 2 px/frame.
+#
+# For a Rayleigh-distributed 2D step the mean magnitude is 1.772*sqrt(D), which
+# inverts to give D. D stays *constant within a clip* even while radii grow, so the
+# ground truth MSD = 4Dt remains exact -- that is what the evaluation grades.
+STEP_MEAN_PER_SQRT_D = 1.772
+
 # Two strata, because "match the real experiment" and "measure physics precisely"
 # pull in opposite directions and the dataset has to serve both.
 #
@@ -66,7 +83,8 @@ MIN_VISIBLE_RADIUS_PX = 2.0
 # entirely, and no amount of realism elsewhere rescues that.
 STRATA = {
     "physics": dict(radius_px=(8.0, 22.0), n=(6, 16), beam_flux=(2.0, 75.0),
-                    pixel_size_nm=(1.5, 4.0), max_coverage=0.09, growth_ratio=5.0),
+                    pixel_size_nm=(1.5, 4.0), max_coverage=0.09, growth_ratio=5.0,
+                    step_per_radius=(0.2, 1.5)),
     # growth_ratio is smaller here because the clip *ends* around 6 px: at 5x the
     # particle would start at 1.2 px, under the visibility floor, and the opening
     # frames would contain no labelled particles at all. The exact time origin
@@ -79,7 +97,8 @@ STRATA = {
     # depth by an unknown factor. Apparent size and frame-to-frame change survive
     # that stretch; absolute depth does not, so it is not a calibration target.
     "experiment": dict(radius_px=(5.0, 8.0), n=(3, 8), beam_flux=(8.0, 12.0),
-                       pixel_size_nm=(2.0, 8.0), max_coverage=0.02, growth_ratio=2.0),
+                       pixel_size_nm=(2.0, 8.0), max_coverage=0.02, growth_ratio=2.0,
+                       step_per_radius=(0.8, 2.0)),
 }
 EXPERIMENT_EVERY = 5  # one clip in five is experiment-grade
 
@@ -155,10 +174,9 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int],
     n = int(rng.integers(*cfg["n"]))
     margin = 0.15 * min(h, w)
     init_pos = rng.uniform(margin, min(h, w) - margin, (n, 2))
-    D = float(rng.uniform(1.0, 4.0))  # px^2 per frame
-    pos = simulate_brownian(n, n_frames, dt=1.0, D=D, box=size,
-                            init_positions=init_pos, rng=rng)[1]
-
+    # D from the step-to-radius ratio (see STEP_MEAN_PER_SQRT_D), using the clip's
+    # typical radius so motion is scaled to the particles that are actually drawn.
+    step_ratio = float(rng.uniform(*cfg["step_per_radius"]))
     t0_growth, dt_growth = 0.0, 1.0
     if process == "ripening":
         radii = ripen_population(rng.uniform(8.0, 22.0, n), n_steps=n_frames, dt=1.0,
@@ -177,8 +195,15 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int],
     # concerned, so drop it from the ground truth rather than label a target that
     # is not there. Only ripening reaches this, on its dissolving tail.
     radii[radii < MIN_VISIBLE_RADIUS_PX] = 0.0
+
+    typical_radius = float(np.median(radii[radii > 0])) if (radii > 0).any() else 1.0
+    D = float((step_ratio * typical_radius / STEP_MEAN_PER_SQRT_D) ** 2)
+    pos = simulate_brownian(n, n_frames, dt=1.0, D=D, box=size,
+                            init_positions=init_pos, rng=rng)[1]
+
     meta = {"process": process, "stratum": stratum, "exponent": EXPONENT[process],
-            "n_particles": n, "D": D, "t0_growth": t0_growth, "dt_growth": dt_growth,
+            "n_particles": n, "D": D, "step_per_radius": step_ratio,
+            "t0_growth": t0_growth, "dt_growth": dt_growth,
             "beam_flux": float(np.exp(rng.uniform(*np.log(cfg["beam_flux"])))),
             "pixel_size_nm": float(rng.uniform(*cfg["pixel_size_nm"]))}
     return [pos[:, i, :] for i in range(n_frames)], [radii[:, i] for i in range(n_frames)], \

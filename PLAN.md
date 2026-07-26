@@ -182,6 +182,17 @@ Measuring it properly reversed the conclusion: real particles are *darker* than 
 
 **Particle depth is explicitly not a calibration target.** Raising magnification to chase it moved the number by 0.01, which was the signal to stop — the real frames were contrast-stretched to 0-255 before publication, and a stretch does not preserve intensity ratios. Apparent size and frame-to-frame change survive it; depth does not. `pixel_size_nm` for the experiment stratum now spans 2–8 nm/px (a 6 px particle at 25–95 nm of gold, all standard Au sizes) rather than being fitted. Second time in this step that a metric was nearly tuned to an artefact — the first was the static-texture term.
 
+**Step 4e — particle motion was ~5x too slow.** Nikola noticed our clips barely move. Measured by tracking (trackpy) detected blobs through the real video: real particles step **10.6 px/frame at 6.1 px radius**. Control experiment — render literally frozen particles at the same imaging conditions and run the same detect+link pipeline — gives a **4.8 px centroid-jitter floor**, so real's true motion is ~9.5 px/frame = **1.55 radii/frame**. Coherent stage drift accounts for only 7 %, so it is genuine diffusion. Ours was 0.26–0.47 radii/frame.
+
+This is not cosmetic:
+- At 0.3 radii/frame, **persistence** (predict the last position) is already an excellent predictor, so the Gate-2 comparison against persistence would have been uninformative on position — and the martingale argument would have looked stronger than it is.
+- MSD would have sat barely above the centroid-noise floor.
+- At ~10 px/frame a particle crosses 16 px patch boundaries every frame, which is a materially different learning problem from one drifting 2 px/frame.
+
+Fix: `D` is now derived from a **step-to-radius ratio** per stratum (physics 0.2–1.5, experiment 0.8–2.0) rather than an absolute `uniform(1,4)`, inverting the Rayleigh mean step `1.772*sqrt(D)`. `D` stays constant within a clip even as radii grow, so ground-truth `MSD = 4Dt` remains exact. Result: experiment stratum **1.75 radii/frame** (real 1.55).
+
+**Evaluation requirement discovered here:** per-clip MSD is nearly worthless at experiment-grade particle counts. The estimator is unbiased (mean ratio 0.96–1.02 at every N) but its spread is set purely by particle count — **sd 0.25 at N=4 vs 0.03 at N=512**. Gate 2 must **pool MSD across clips**, never score it per clip. `tests/test_dataset_physics.py` now tests it pooled (the way the evaluation must use it) instead of widening a tolerance until one noisy clip fits, and `verify_clips.py` prints the particle count with a spread warning below N=20.
+
 **Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.

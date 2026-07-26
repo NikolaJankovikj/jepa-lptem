@@ -37,13 +37,26 @@ def test_growth_exponent_recovered_from_generated_clip(process, expected):
 
 
 def test_msd_of_generated_positions_matches_4Dt():
+    """MSD must recover 4Dt -- but only when *pooled across clips*.
+
+    The estimator is unbiased (mean ratio 0.96-1.02 for every particle count), yet
+    its spread is entirely set by how many particles contribute: sd 0.25 at N=4
+    versus 0.03 at N=512. A single experiment-grade clip holds 3-8 particles, so
+    its MSD is worth little on its own. This is an evaluation requirement, not a
+    generator defect: Gate 2 must pool MSD across clips rather than score per clip.
+    Testing it the way the evaluation has to use it, instead of widening a
+    tolerance until one noisy clip fits.
+    """
     rng = np.random.default_rng(1)
-    _, _, meta, pos, _ = build_clip("static", 64, (512, 512), rng)
-    msd = compute_msd(pos)
     lags = np.arange(1, 64)
-    short = 16  # few particles per clip make long lags noisy; short lags give 4D
-    slope = float(np.polyfit(lags[:short], msd[:short], 1)[0])
-    assert abs(slope / (4 * meta["D"]) - 1.0) < 0.4, f"slope={slope:.3f} D={meta['D']:.3f}"
+    short = 16  # long lags are biased downward by the reflecting box
+    ratios = []
+    for _ in range(6):
+        _, _, meta, pos, _ = build_clip("static", 64, (512, 512), rng)
+        slope = float(np.polyfit(lags[:short], compute_msd(pos)[:short], 1)[0])
+        ratios.append(slope / (4 * meta["D"]))
+    pooled = float(np.mean(ratios))
+    assert abs(pooled - 1.0) < 0.15, f"pooled MSD/4D = {pooled:.3f} from {ratios}"
 
 
 @pytest.mark.parametrize("stratum", list(STRATA))

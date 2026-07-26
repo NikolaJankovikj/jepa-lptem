@@ -113,8 +113,15 @@ def main() -> None:
     recall_ratio = n_det / n_true if n_true else float("nan")  # detected count / true count
 
     print(f"\n=== {stem}  (process={process}, D={D}) ===")
+    n_part = int(alive.any(axis=1).sum())
     print(f"[GT physics]   MSD short-lag slope = {msd_slope:.3f}"
-          + (f"   vs 4D = {4*D:.3f}   ratio {msd_slope/(4*D):.2f}" if D else ""))
+          + (f"   vs 4D = {4*D:.3f}   ratio {msd_slope/(4*D):.2f}" if D else "")
+          + f"   [N={n_part}]")
+    if n_part < 20:
+        print(f"               ^ a per-clip MSD from {n_part} particles has sd ~"
+              f"{0.5 / max(n_part, 1) ** 0.5:.2f} on this ratio.\n"
+              "                 The estimator is unbiased; pool across clips before "
+              "drawing conclusions.")
     print(f"[GT physics]   growth exponent alpha = {alpha:.3f}")
     print(f"[round-trip]   position error (matched): median {med_err:.2f}px  "
           f"(radii ~{np.nanmean(rad[alive]):.0f}px)")
