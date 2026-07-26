@@ -193,6 +193,24 @@ Fix: `D` is now derived from a **step-to-radius ratio** per stratum (physics 0.2
 
 **Evaluation requirement discovered here:** per-clip MSD is nearly worthless at experiment-grade particle counts. The estimator is unbiased (mean ratio 0.96–1.02 at every N) but its spread is set purely by particle count — **sd 0.25 at N=4 vs 0.03 at N=512**. Gate 2 must **pool MSD across clips**, never score it per clip. `tests/test_dataset_physics.py` now tests it pooled (the way the evaluation must use it) instead of widening a tolerance until one noisy clip fits, and `verify_clips.py` prints the particle count with a spread warning below N=20.
 
+**Step 4f — the "3× too large" finding was wrong, and it had driven the design.** Nikola reported he could no longer tell a particle from noise in our clips. That was correct, and tracing it invalidated an earlier measurement.
+
+`apparent_radius_px` originally sized particles from thresholded connected components. That is biased low — a threshold captures only the dark core of a noisy blob, and the bias *grows as SNR falls*, so it under-measures exactly where it matters most. Replaced with a **radial-profile half-depth fit**, validated against our own ground truth (recovers true 9.5 px → 8.0, true 4.9 px → 5.0). A scale-selection variant was also tried and rejected: it validates at high SNR but reads a true 4.9 px particle as 22 px at low SNR, where noise correlation dominates.
+
+Corrected numbers:
+
+| | old (component) | **new (radial profile)** |
+|---|---|---|
+| REAL | 6.1 px | **8.0 px** |
+| OURS physics | 12.7 px | **7.0 px** |
+| OURS experiment | 5.6 px | **4.0 px** |
+
+So our particles were never 3× too large — the physics stratum was already the right size, and the "fix" had shrunk the experiment stratum to *half* of real, which is why it went invisible. Experiment `radius_px` raised to 10–16 → measured **7.5 px** against real 8.0.
+
+**The strata split on density and dose, not particle size.** Size is now matched in both; what genuinely differs is particle count and electron dose. `scripts/compare_to_real.py` writes `detectability.png` (raw / matched-filtered / ground-truth overlay, ours and real side by side) as standing evidence that the signal is present even when the eye and a threshold detector cannot find it — which is precisely the argument for a learned model over classical segmentation.
+
+Lesson worth carrying into the write-up: three separate times in Step 4 a number was nearly tuned to an artefact of its own estimator (static texture vs a structure-insensitive noise metric, particle depth vs an unknown contrast stretch, particle size vs a threshold bias). **Validate the estimator against known ground truth before trusting it on real data** — every one of these was caught that way, and the size bug was caught only because the same estimator could be pointed at clips whose answer we already knew.
+
 **Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.

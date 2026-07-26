@@ -88,7 +88,7 @@ def test_no_particle_is_labelled_below_the_visibility_floor(process, stratum):
 def test_experiment_stratum_covers_measured_real_conditions(process):
     """The experiment stratum exists to put real imaging conditions inside the
     training distribution. Measured on real experimental video (see
-    scripts/compare_to_real.py): apparent particle radius ~6 px, coverage well
+    scripts/compare_to_real.py): apparent particle radius ~8 px, coverage well
     under 2 %, and frame-to-frame change |dI|/mean ~0.40, which corresponds to
     beam flux ~8-12. Before this
     stratum existed our particles were ~3x larger than real, so real data sat
@@ -97,7 +97,7 @@ def test_experiment_stratum_covers_measured_real_conditions(process):
     rng = np.random.default_rng(5)
     _, _, meta, _, radii = build_clip(process, 48, (512, 512), rng, stratum="experiment")
     alive = radii[radii > 0]
-    assert 3.0 <= alive.max() <= 9.0, f"{process}: max radius {alive.max():.1f}px"
+    assert 8.0 <= alive.max() <= 17.0, f"{process}: max radius {alive.max():.1f}px"
     coverage = float(np.pi * (radii ** 2).sum(axis=0).max()) / (512 * 512)
     assert coverage <= 0.02, f"{process}: coverage {coverage:.4f}"
     assert 8.0 <= meta["beam_flux"] <= 12.0, f"{process}: flux {meta['beam_flux']:.1f}"

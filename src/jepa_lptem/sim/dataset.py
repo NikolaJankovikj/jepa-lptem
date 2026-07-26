@@ -59,7 +59,7 @@ STEP_MEAN_PER_SQRT_D = 1.772
 #               Gate 2 are actually decided: if a probe fails here we need to
 #               know it failed because the model cannot do it, not because our
 #               estimator was too noisy to tell.
-#   experiment  Pinned to what we measured on real experimental video: ~6 px
+#   experiment  Pinned to what we measured on real experimental video: ~8 px
 #               particles, under 2 % coverage, and a beam flux set from the
 #               *temporal* noise statistic (|dI|/mean ~0.40 -> flux ~8-12), which
 #               is what a video model actually consumes. Weak statistics per clip
@@ -78,9 +78,13 @@ STEP_MEAN_PER_SQRT_D = 1.772
 # Randomising over a range that brackets real data beats fitting a point estimate
 # of it: our picture of "real" is 75 frames of one Au-nanorod experiment, exported
 # by one person, and Step 13 also tests on a different (aggregation) condition.
-# What is NOT optional is coverage -- before this split our particles were ~3x
-# larger than real in apparent pixels, so real data sat outside our distribution
-# entirely, and no amount of realism elsewhere rescues that.
+# The two strata differ in *density and dose*, not particle size. An earlier
+# version split them on size, on the strength of a measurement that turned out to
+# be wrong: a threshold-component size estimator read real video as 6.1 px when a
+# radial-profile fit (validated against our own ground truth) says 8.0 px, and read
+# our clips as 3x larger than real when they were already the same size. Particle
+# size is now matched in both strata; what genuinely differs is how many particles
+# there are and at what dose.
 STRATA = {
     "physics": dict(radius_px=(8.0, 22.0), n=(6, 16), beam_flux=(2.0, 75.0),
                     pixel_size_nm=(1.5, 4.0), max_coverage=0.09, growth_ratio=5.0,
@@ -96,7 +100,7 @@ STRATA = {
     # frames were contrast-stretched to 0-255 before publication, which inflates
     # depth by an unknown factor. Apparent size and frame-to-frame change survive
     # that stretch; absolute depth does not, so it is not a calibration target.
-    "experiment": dict(radius_px=(5.0, 8.0), n=(3, 8), beam_flux=(8.0, 12.0),
+    "experiment": dict(radius_px=(10.0, 16.0), n=(3, 8), beam_flux=(8.0, 12.0),
                        pixel_size_nm=(2.0, 8.0), max_coverage=0.02, growth_ratio=2.0,
                        step_per_radius=(0.8, 2.0)),
 }
