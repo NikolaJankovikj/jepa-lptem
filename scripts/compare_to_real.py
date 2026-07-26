@@ -80,6 +80,31 @@ def apparent_radius_px(frames, k=12):
     return float(np.median(radii)) if radii else float("nan")
 
 
+def particle_depth(frames, k=8):
+    """Median ``1 - I_particle / I_background``, averaged over each blob's area.
+
+    Area-averaged rather than centre-pixel because the detector thresholds on
+    darkness, so single pixels are selection-biased towards dark noise. Background
+    is the median for the reason given in :func:`to_common_grey`.
+
+    **Reported for information, not as a calibration target.** The real frames were
+    contrast-stretched to 0-255 before publication, and such a stretch does not
+    preserve intensity ratios -- it inflates depth by an unknown factor. Apparent
+    size and frame-to-frame change survive the stretch; this does not.
+    """
+    deps = []
+    for fr in frames[:k]:
+        _, lab = detect_dark_blobs(fr)
+        bg = float(np.median(fr))
+        for i in np.unique(lab):
+            if i == 0:
+                continue
+            m = lab == i
+            if m.sum() >= 80:
+                deps.append(1.0 - fr[m].mean() / bg)
+    return float(np.median(deps)) if deps else float("nan")
+
+
 def temporal_delta(frames):
     """Mean |I(t+1) - I(t)| relative to the mean level -- what a video model sees."""
     if len(frames) < 2:
@@ -101,14 +126,29 @@ def centre_crop(frames, size=512):
     return frames[:, top:top + size, left:left + size]
 
 
+def to_common_grey(frames):
+    """Put every source on one grey scale: background -> 128, whatever its units.
+
+    Without this each panel is autoscaled to its own min/max, so apparent contrast
+    is set by the source's dynamic range rather than compared between sources --
+    and the real frames (already contrast-stretched to 0-255) get judged against
+    ours (physical scale, background at 64). Median is the background reference
+    because the real histogram is very broad (p5=38, p95=179): a high percentile
+    over-reads its background and exaggerates particle depth.
+    """
+    bg = np.median(frames)
+    return np.clip(frames / max(bg, 1e-6) * 128.0, 0, 255)
+
+
 def write_gif(panels, path, n_frames=40, fps=7, suptitle=None):
     """Animate one or more equally-sized frame stacks side by side."""
+    panels = [(name, to_common_grey(fr)) for name, fr in panels]
     n = min([n_frames] + [len(f) for _, f in panels])
     fig, axes = plt.subplots(1, len(panels), figsize=(4.2 * len(panels), 4.6))
     axes = np.atleast_1d(axes)
     ims = []
     for ax, (name, fr) in zip(axes, panels):
-        ims.append(ax.imshow(fr[0], cmap="gray"))
+        ims.append(ax.imshow(fr[0], cmap="gray", vmin=0, vmax=255))
         ax.set_title(name, fontsize=9)
         ax.axis("off")
     if suptitle:
@@ -136,19 +176,27 @@ def main() -> None:
     theirs = load_sequence("data/sam-em/ablationValidationSet.zip",
                            lambda x: "/jpeg_images/" in x and x.endswith(".jpg"))
     clips = sorted(glob.glob(str(args.out / "*.npz")))
+    # Pooled across clips for the statistics...
     ours = np.concatenate([np.load(f)["frames"][:8].astype(float) for f in clips])
     fluxes = [float(np.load(f)["beam_flux"]) for f in clips]
+    # ...but ONE continuous clip for the animation. Concatenating clips makes the
+    # GIF cut between scenes every 8 frames, which reads as a rendering artefact.
+    exp_clips = [f for f in clips if f.endswith("_experiment.npz")] or clips
+    one_clip = np.load(exp_clips[0])["frames"].astype(float)
 
     sources = [("REAL experimental", real), ("THEIRS (LPTEMsimulator)", theirs),
                ("OURS", ours)]
-    print(f"{'source':26s} {'n':>4s} {'size':>12s} {'radius px':>10s} {'|dI|/mean':>11s}")
+    print(f"{'source':26s} {'n':>4s} {'size':>12s} {'radius px':>10s} "
+          f"{'depth*':>7s} {'|dI|/mean':>11s}")
     for name, fr in sources:
         print(f"{name:26s} {len(fr):4d} {str(fr.shape[1:]):>12s} "
-              f"{apparent_radius_px(fr):10.1f} {temporal_delta(fr):11.3f}")
+              f"{apparent_radius_px(fr):10.1f} {particle_depth(fr):7.3f} "
+              f"{temporal_delta(fr):11.3f}")
     print(f"\n  our clips span beam_flux {min(fluxes):.1f}-{max(fluxes):.1f}")
-    print("  NOTE: absolute intensity is NOT comparable -- the real frames are "
-          "JPEGs that\n        were already contrast-stretched. Only shape, scale "
-          "and dynamics are.")
+    print("  * depth is informational only: the real frames were contrast-stretched "
+          "to 0-255\n    before publication, which inflates it by an unknown factor. "
+          "Apparent size and\n    frame-to-frame change survive that stretch and are "
+          "the comparable numbers.")
 
     fig = plt.figure(figsize=(14, 8))
     for i, (name, fr) in enumerate(sources):
@@ -193,9 +241,10 @@ def main() -> None:
     # so a particle that looks bigger really is bigger in the pixels the model sees.
     write_gif([("REAL (512px crop)", centre_crop(real)),
                ("THEIRS (512px crop)", centre_crop(theirs)),
-               ("OURS (512px native)", ours)],
+               ("OURS (512px native)", one_clip)],
               args.out / "compare_side_by_side.gif",
-              suptitle="matched pixel scale -- cropped, not resized")
+              suptitle="matched pixel scale (cropped, not resized) and matched grey scale "
+                       "(background -> 128)")
 
 
 if __name__ == "__main__":

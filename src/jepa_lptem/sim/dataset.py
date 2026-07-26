@@ -71,8 +71,15 @@ STRATA = {
     # particle would start at 1.2 px, under the visibility floor, and the opening
     # frames would contain no labelled particles at all. The exact time origin
     # (growth_time_axis) keeps the exponent accurate over the shorter range.
+    # pixel_size_nm spans a wide range here rather than a fitted value. Contrast is
+    # gold path length = 2*r*pixel_size_nm, so this range puts a 6 px particle
+    # anywhere from ~25 to ~95 nm of gold -- all standard Au nanoparticle sizes.
+    # Deliberately NOT tuned to the measured particle depth of real video: those
+    # frames were contrast-stretched to 0-255 before publication, which inflates
+    # depth by an unknown factor. Apparent size and frame-to-frame change survive
+    # that stretch; absolute depth does not, so it is not a calibration target.
     "experiment": dict(radius_px=(5.0, 8.0), n=(3, 8), beam_flux=(8.0, 12.0),
-                       pixel_size_nm=(2.0, 4.0), max_coverage=0.02, growth_ratio=2.0),
+                       pixel_size_nm=(2.0, 8.0), max_coverage=0.02, growth_ratio=2.0),
 }
 EXPERIMENT_EVERY = 5  # one clip in five is experiment-grade
 
