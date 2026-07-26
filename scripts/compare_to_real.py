@@ -205,6 +205,52 @@ def write_detectability(our_clip, our_pos, our_rad, phys_clip, real, path):
     print(f"[wrote] {path}")
 
 
+def containment_report(clip_files, real):
+    """The generator's exit criterion: is real *inside* our distribution?
+
+    Not "does our mean match real's mean". This dataset is domain randomisation:
+    its job is to span a range of imaging conditions wide enough that real data
+    falls inside it, so a model trained here has already seen real conditions.
+    Chasing a point estimate of one 75-frame experiment -- exported by one person,
+    contrast-stretched by an unknown factor -- fits an artefact, and worse, it has
+    no fixed point: every appearance statistic moves when its estimator is
+    refined, so "close enough to real" never terminates. Containment terminates,
+    and it is falsifiable: for each statistic that survives an unknown stretch,
+    real must lie between our min and our max.
+
+    Only two statistics qualify. Absolute contrast does not survive the stretch
+    (see :func:`particle_depth`), so it is reported but never gated on.
+
+    Our side measures from ground-truth centres, since we have them; real has no
+    choice but the detector. The size estimator is the same on both sides and was
+    validated against known radii before being trusted here.
+    """
+    rows = []
+    for f in clip_files:
+        z = np.load(f)
+        fr = z["frames"].astype(float)
+        pos, rad = z["positions"], z["radii"]
+        centres = lambda _f, i, p=pos, r=rad: p[:, i, :][r[:, i] > 0]
+        rows.append((apparent_radius_px(fr[:8], centres), temporal_delta(fr)))
+    ours = np.array(rows)  # (n_clips, 2)
+    real_c = centre_crop(real)
+    targets = [("apparent radius (px)", apparent_radius_px(real_c)),
+               ("|dI|/mean", temporal_delta(real_c))]
+
+    print(f"\n{'statistic':22s} {'ours min':>9s} {'ours max':>9s} {'real':>8s}")
+    ok = True
+    for j, (name, target) in enumerate(targets):
+        lo, hi = np.nanmin(ours[:, j]), np.nanmax(ours[:, j])
+        inside = lo <= target <= hi
+        ok &= inside
+        print(f"{name:22s} {lo:9.3f} {hi:9.3f} {target:8.3f}   "
+              f"{'PASS' if inside else 'FAIL'}")
+    print(f"\n  {'CONTAINED' if ok else 'NOT CONTAINED'}: real experimental video "
+          f"{'is' if ok else 'is NOT'} inside the generated distribution"
+          f" ({len(clip_files)} clips).")
+    return ok
+
+
 def centre_crop(frames, size=512):
     """Crop to a common pixel window -- NOT a resize.
 
@@ -285,6 +331,8 @@ def main() -> None:
         print(f"{name:26s} {len(fr):4d} {str(fr.shape[1:]):>12s} "
               f"{apparent_radius_px(fr):10.1f} {particle_depth(fr):7.3f} "
               f"{temporal_delta(fr):11.3f}")
+    containment_report(clips, real)
+
     print(f"\n  our clips span beam_flux {min(fluxes):.1f}-{max(fluxes):.1f}")
     print("  * depth is informational only: the real frames were contrast-stretched "
           "to 0-255\n    before publication, which inflates it by an unknown factor. "

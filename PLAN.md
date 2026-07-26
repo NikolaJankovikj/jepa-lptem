@@ -211,6 +211,21 @@ So our particles were never 3× too large — the physics stratum was already th
 
 Lesson worth carrying into the write-up: three separate times in Step 4 a number was nearly tuned to an artefact of its own estimator (static texture vs a structure-insensitive noise metric, particle depth vs an unknown contrast stretch, particle size vs a threshold bias). **Validate the estimator against known ground truth before trusting it on real data** — every one of these was caught that way, and the size bug was caught only because the same estimator could be pointed at clips whose answer we already knew.
 
+**Step 4g — the exit criterion, which was the thing actually missing.** Four commits in a row (`2776936`…`0f8bd1f`) moved appearance parameters toward "looks like real" without ever defining *done*. That loop has no fixed point: each appearance statistic shifts when its estimator is refined, and the reference is 75 frames of one experiment with an unknown contrast stretch, so every refinement reopens the question.
+
+**The dataset is not supposed to look like the real video. It is supposed to contain it.** This is domain randomisation: generate a *distribution* of imaging conditions wide enough that real data falls inside its support, so a model trained here has already seen real conditions. Fitting a point estimate of one experiment fits an artefact, and would also make the dataset *narrower* than the phenomenon — the opposite of what Tier-2 transfer needs.
+
+So the criterion is **containment, not equality**: for each statistic that survives an unknown contrast stretch, real must lie between our minimum and our maximum. Falsifiable, and it terminates. `containment_report` in `scripts/compare_to_real.py`:
+
+| statistic | ours min | ours max | real | |
+|---|---|---|---|---|
+| apparent radius (px) | 5.0 | 15.0 | 6.0–8.0 | PASS |
+| \|dI\|/mean | 0.136 | 0.752 | 0.407 | PASS |
+
+Only two statistics qualify — absolute contrast does not survive the stretch, so it is reported and never gated on. **Step 4 appearance work is closed.** It reopens only if a statistic leaves containment, not because a panel looks off.
+
+Reviewing all nine commits against this: exactly one parameter ever circled — experiment `radius_px`, uncontrolled → (5,8) → (10,16). Every other change was monotone progress (water clamp, fixed intensity scale, exact growth time origin, ODE substeps, radius-scaled diffusion), and (10,16) is the correct value. Nothing to revert; HEAD is the best state the tree has been in.
+
 **Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
