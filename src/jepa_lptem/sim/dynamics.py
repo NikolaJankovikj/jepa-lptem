@@ -25,7 +25,71 @@ import numpy as np
 GROWTH_K = {"diffusion": 1.0, "reaction": 1.0, "dissolution": 0.05}
 
 
-def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str):
+def simulate_brownian(
+    n_particles: int,
+    n_steps: int,
+    dt: float,
+    D: float,
+    init_positions: np.ndarray | None = None,
+    box: tuple[float, float] | None = None,
+    rng: np.random.Generator | None = None,
+):
+    """Independent 2D Brownian trajectories — the position ground truth for MSD.
+
+    Each coordinate takes Gaussian steps of variance ``2 D dt``, so the ensemble
+    mean-squared displacement grows as ``MSD(t) = 4 D t`` (checked against
+    ``eval.observables.compute_msd`` in the tests). Position is a martingale: the
+    best predictor of the next frame is the current one, which is exactly why the
+    model can only be graded on *statistics* (MSD, displacement distribution),
+    never on predicting an individual step.
+
+    Parameters
+    ----------
+    n_particles, n_steps : int
+        Number of particles ``N`` and frames ``T``.
+    dt, D : float
+        Timestep and diffusion coefficient (px^2 per unit time).
+    init_positions : np.ndarray or None
+        Shape ``(N, 2)`` starting ``(row, col)``; defaults to the origin. If
+        ``box`` is given without ``init_positions``, particles start at the centre.
+    box : (float, float) or None
+        ``(height, width)``; when set, coordinates reflect off ``[0, size]`` walls
+        so particles stay in frame. ``None`` = free diffusion (for clean MSD).
+    rng : np.random.Generator or None
+        Seeded generator for reproducibility.
+
+    Returns
+    -------
+    (t, pos) : tuple[np.ndarray, np.ndarray]
+        ``t`` shape ``(n_steps,)``; ``pos`` shape ``(N, n_steps, 2)``.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    if init_positions is None:
+        if box is not None:
+            init_positions = np.tile(
+                [box[0] / 2.0, box[1] / 2.0], (n_particles, 1)
+            )
+        else:
+            init_positions = np.zeros((n_particles, 2))
+    init_positions = np.asarray(init_positions, dtype=float)
+
+    sigma = np.sqrt(2.0 * D * dt)
+    steps = rng.normal(0.0, sigma, size=(n_particles, n_steps, 2))
+    steps[:, 0, :] = 0.0
+    pos = init_positions[:, None, :] + np.cumsum(steps, axis=1)
+
+    if box is not None:
+        # reflect into [0, size] on each axis via the triangle-wave folding map
+        for axis, size in enumerate(box):
+            period = 2.0 * size
+            folded = np.mod(pos[..., axis], period)
+            pos[..., axis] = np.where(folded > size, period - folded, folded)
+
+    return np.arange(n_steps) * dt, pos
+
+
+def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str, substeps: int = 10):
     """Integrate per-particle radius ODEs (independent particles).
 
     Parameters
@@ -38,6 +102,12 @@ def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str):
         ``diffusion``: ``dr/dt = K / r^2`` -> ``r ~ t^(1/3)`` (LSW, diffusion-limited).
         ``reaction`` : ``dr/dt = K / r``   -> ``r ~ t^(1/2)`` (reaction-limited).
         ``dissolution``: ``dr/dt = -K``    -> linear shrink, clamped at 0.
+    substeps : int
+        Euler substeps per frame (as in :func:`ripen_population`). These ODEs are
+        stiffest at small ``r`` -- ``dr/dt = K/r^2`` can move the radius tens of
+        percent in a single frame -- and the integration error shows up directly as
+        a biased growth exponent. Substepping is what makes the measured exponent
+        the physics rather than the integrator.
 
     Returns
     -------
@@ -50,16 +120,19 @@ def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str):
     r0 = np.asarray(r0, dtype=float)
     r = np.zeros((len(r0), n_steps))
     r[:, 0] = r0
+    cur = r0.copy()
+    sub_dt = dt / substeps
     for i in range(1, n_steps):
-        cur = r[:, i - 1]
-        safe = np.maximum(cur, 1e-6)
-        if mode == "diffusion":
-            dr = K / safe ** 2
-        elif mode == "reaction":
-            dr = K / safe
-        else:  # dissolution
-            dr = -K * np.ones_like(cur)
-        r[:, i] = np.maximum(cur + dr * dt, 0.0)
+        for _ in range(substeps):
+            safe = np.maximum(cur, 1e-6)
+            if mode == "diffusion":
+                dr = K / safe ** 2
+            elif mode == "reaction":
+                dr = K / safe
+            else:  # dissolution
+                dr = -K * np.ones_like(cur)
+            cur = np.maximum(cur + dr * sub_dt, 0.0)
+        r[:, i] = cur
     return np.arange(n_steps) * dt, r
 
 

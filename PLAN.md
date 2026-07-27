@@ -4,7 +4,7 @@
 
 **Architecture:** Frozen-or-LoRA V-JEPA 2 ViT-L encoder → cached latent features → small block-causal forecasting predictor (teacher forcing + rollout) → probes that read physical observables off predicted latents → compared against a persistence baseline and a pixel ConvLSTM baseline. All probes are validated against simulator ground truth *before* any model exists.
 
-**Tech stack:** Python 3.11, PyTorch 2.x (bf16, DDP), HuggingFace `transformers` (V-JEPA 2) + `peft` (LoRA), official `facebookresearch/vjepa2` repo for SSL adaptation, SAM-EM simulator (extended), pytest, uv, tmux + ssh for remote runs.
+**Tech stack:** Python 3.11, PyTorch 2.x (bf16, DDP), HuggingFace `transformers` (V-JEPA 2) + `peft` (LoRA), official `facebookresearch/vjepa2` repo for SSL adaptation, LPTEMsimulator physics (re-implemented in `render_bridge.py`), pytest, uv, tmux + ssh for remote runs.
 
 ---
 
@@ -124,15 +124,109 @@ Two probe types, matching the V-JEPA attentive-readout protocol (frozen features
 - [x] **`ripen_population`** — the recommended upgrade: *coupled, mass-conserving* Ostwald ripening (LSW). Gibbs–Thomson exchange around r*=⟨r⟩, sub-critical particles dissolve, volume renormalized to initial each step. Verified real coarsening: count 40→6, mean radius 2.50→5.18, total volume constant (851.02). This is the physically-faithful `ripening_coalescence` growth mode; the three `evolve_radii` modes stay simple independent ODEs.
 - [x] 9 tests pass; full suite 24 green → committed.
 
-## Step 4 — Render bridge + dynamics dataset generator (code + local smoke)
+## Step 4 — Render bridge + dynamics dataset generator (code + local smoke) ✅
 
-**Where:** local — write the code, smoke-test on a handful of videos, validate the physics. **The full 2,000-video generation is deferred to the remote (first job after Step 5 PC setup)** — it's a multi-hour batch job whose ~50 GB output is consumed on the PC.
+**Where:** local — write the code, smoke-test on a handful of videos, validate the physics. **The full generation is deferred to the remote (first job after Step 5 PC setup)** — it's a multi-hour batch job whose ~50 GB output is consumed on the PC.
 
-- [ ] Read SAM-EM's synthetic-video generation code (`code/sam-em`) and locate the renderer entry point; record its signature in the `render_bridge.py` docstring. *(This is the main unknown-shaped task — do it before wiring anything downstream.)*
-- [ ] Implement `src/jepa_lptem/sim/render_bridge.py` — one function, `render_video(positions, radii, liquid_thickness_nm, size=512) -> (T,H,W)`, delegating to SAM-EM's renderer; keep it <100 lines.
-- [ ] Implement `scripts/generate_dynamics_dataset.py`: 4 modes × 500 videos (`diffusion_only`, `growth_diffusion`, `growth_reaction`, `ripening_coalescence`), 100 frames, 512², liquid thickness sampled 20–120 nm (the SNR axis for RQ3); motion sampled from LEONARDO statistics as upstream does. Per video: `frames.npy` + `gt.npz` (positions, radii, event times).
-- [ ] **Smoke locally:** `--n 5`, eyeball the videos (particles visibly grow/merge), then `tests/test_dataset_physics.py`: fit growth exponents on generated `gt.npz` → within ±0.05 of each mode's law. **This is the Step-4 completion bar** — the generator is proven correct on tiny output before we ever run it at scale.
-- [ ] Commit scripts. (Full run + `experiments/dataset-v1/README.md` happen in Step 5/6 on the remote.)
+- [x] **Found the real renderer: `github.com/JamaliLab/LPTEMsimulator`** (a Python port of Yao et al.'s MATLAB `chenlabUIUC/simulatedLPTEM`) — *not* SAM-EM, which is only a segmentation GUI. It has no LICENSE file, so we **re-implement** the image-formation physics cleanly (cited) rather than copy it. Cloned to `code/LPTEMsimulator/` for reference; the one reused asset is its measured `MTFmatrix512.mat`.
+- [x] Implement `src/jepa_lptem/sim/render_bridge.py` — our own clean version of the LPTEMsimulator physics: `draw_spheres` (our circle front-end + spherical-chord gold-thickness map, replacing their nanorods), `render_frame` (Beer–Lambert attenuation through gold/water/SiNx + Poisson + Gaussian + optional MTF), `render_video`, `normalize_uint8`. Fully TDD'd — `tests/test_render_bridge.py` (12 tests: disk area, chord=diameter, darker-particle invariant, water→dimmer monotonic, seeded-noise determinism, MTF DC-preservation).
+- [x] Added `simulate_brownian` to `sim/dynamics.py` (the position ground truth; MSD = 4Dt verified via `compute_msd`, reflecting-box option). +3 tests.
+- [x] Implement `src/jepa_lptem/sim/dataset.py` (`build_clip`, the composition layer) + `scripts/generate_dynamics_dataset.py` as a thin CLI on top: processes `{ripening, diffusion, reaction, static}`, one `.npz`/clip (`frames` uint8 `(T,H,W)`, `positions` `(N,T,2)`, `radii` `(N,T)`) + `manifest.jsonl`.
+- [x] **Smoke locally (`--n-videos 5`, 512², real MTF):** appearance matches a real SAM-EM frame unprompted (real mean 123 vs ours 126, same Poisson texture); GIFs sent to Nikola. `scripts/verify_clips.py` writes overlay GIFs + physics panels and runs an **independent** classical detector (shares no code with the renderer) for a pixels→physics round trip.
+- [x] **Three defects found and fixed before freezing the generator** (see below). Final smoke numbers, all four processes: MSD/4D ratio 0.97–1.13, α = 0.332 / 0.499 / −0.000 / −0.003 (diffusion / reaction / static / ripening), round-trip position error **0.53–0.70 px** on ~20 px radii, detector precision 0.83–1.00.
+- [x] `tests/test_dataset_physics.py` — permanent regression guard on the generated ground truth (exponents to ±0.005, MSD ≈ 4Dt, sparsity ≤ 10 % coverage, min radius ≥ 2 px). Full suite **51 passed**.
+- [x] Commit scripts. (Full run + `experiments/dataset-v1/README.md` happen in Step 5/6 on the remote.)
+
+**Three defects fixed at the end of Step 4** (all would have silently poisoned the 50 GB remote run):
+
+1. **Negative water thickness.** `render_frame` computed `water = thickness_water − gold_nm`, which goes negative once a particle exceeds the 150 nm cell — subtracting optical depth and rendering large/overlapping particles too bright. Now clamped at 0 (a particle thicker than the cell displaces all the water and no more), with a test asserting intensity stops depending on `thickness_water` past that point.
+2. **Uncontrolled density.** Particle count was drawn independently of final size, so growth clips reached ~48 px radii at ~35 % gold coverage — heavy overlap, and *the ground truth stops being recoverable from the frame*, which would make any Gate-1 failure uninterpretable. `rescale_to_density` now scales all radii by one constant so peak coverage hits a target 4–9 % (log-log slope and MSD are both invariant under a uniform radius rescale). Round-trip error on the diffusion clip: 27.65 px → **0.53 px**.
+3. **Two exponent biases, both real physics bugs, not tuning.** (a) *Wrong time origin* — a particle of radius `r0` is not newly nucleated, it already has age `r0³/3K`; labelling frame 0 as `t=0` flattened reaction to 0.43. `growth_time_axis` now returns `(t0, dt)` and the clip carries `t0_growth` in its metadata. (b) *Integrator error* — `evolve_radii` was single-step forward Euler, and `dr/dt = K/r²` moved the radius 65 % in one frame at small `r`, so the measured exponent was the integrator rather than the physics. Added `substeps` (default 10, matching `ripen_population`). Combined: diffusion 0.304 → **0.3318**, reaction 0.433 → **0.4993**.
+
+**Step 4b — imaging realism + the normalisation leak.** Prompted by asking how our frames actually compare to real LPTEM, measured with `scripts/compare_to_real.py` (Immerkær noise estimator, edge-insensitive):
+
+| source | σ/background | note |
+|---|---|---|
+| REAL experimental Au nanorods | 0.238 | JPEG-compressed, unknown preprocessing |
+| THEIR synthetic (LPTEMsimulator) | 0.063 | matches our flux=75 prediction to 3 decimals |
+| OURS (was, flux=30) | 0.074 | |
+
+Two fixes, one of them a correctness bug:
+
+1. **Per-clip min–max normalisation was leaking the label.** `normalize_uint8` stretched every clip to 0–255, which (a) erased absolute contrast — a 32 nm particle (25 % attenuation) and a 160 nm one (77 %) saved identically — and (b) made overall frame brightness correlate with mean radius at **+0.72/+0.77 on the growth modes, with the sign inverted from the real physics**. A Gate-1 probe could have read mean radius off global brightness without ever localising a particle, on exactly the two modes where the growth exponent is the headline result. Replaced by `to_uint8`, which divides by the analytically known background (`background_intensity`) — one fixed scale for the whole dataset, dose-independent, background at 64/255 for 4× noise headroom. Correlations are now **−0.74/−0.97** (physical attenuation). Ripening reads +0.41, which *is* physical: mass-conserving coarsening shrinks total projected area.
+2. **Imaging conditions randomised, not fitted.** `beam_flux` log-uniform over 2–75 (σ/bg 0.27→0.06, bracketing real 0.238) and `pixel_size_nm` 1–4 (magnification, which sets contrast). Fitting the point estimate would overfit the simulator to 12 JPEG frames of one experiment; bracketing puts real data inside the training distribution. Both recorded per clip in the manifest → gives the **physics-recovery-vs-dose** ablation figure for free.
+
+Not closable at any parameter setting: real LPTEM's structural texture (SiNx granularity, contamination, radiolysis bubbles, drift). State this as the Tier-2 bound.
+
+`scripts/verify_clips.py` now reports the brightness-shortcut correlation and the saturated-pixel fraction on every clip. Suite **57 passed**.
+
+**Step 4c — appearance vs real video, and the stratified generator.** `scripts/compare_to_real.py` compares against real experimental video on the three things that survive the fact that the real frames are pre-stretched JPEGs (absolute intensity is *not* comparable): apparent particle size in px, radial power spectrum of I/mean, and frame-to-frame change. Also writes `real_video.gif` and a side-by-side GIF **cropped, never resized** — resizing to a common display size would rescale the very quantity under comparison.
+
+It found that our particles were **~3× larger than real in apparent pixels** (16.7 px radius vs 6.1). That matters specifically for a ViT: at 16×16 patches, real particles occupy under one patch and ours spanned ~2×2. Real data sat *outside* our distribution, which no amount of realism elsewhere would rescue.
+
+Fix: **two strata** (`sim/dataset.py:STRATA`), because "match the real experiment" and "measure physics precisely" genuinely conflict.
+- `physics` (4 in 5): 8–22 px particles, 6–16 of them, flux 2–75. Where Gate 1 and Gate 2 are decided — a probe failure here must mean the model can't do it, not that our estimator was too noisy to tell.
+- `experiment` (1 in 5): 5–8 px particles, ≤2 % coverage, flux 8–12. Weak statistics by construction; its only job is to put real imaging conditions inside the training distribution. Uses a smaller `growth_ratio` (2.0 vs 5.0) — at 5× a 6 px particle starts at 1.2 px, under the visibility floor, and the opening frames come out empty.
+
+Also added `MIN_VISIBLE_RADIUS_PX`: a particle too small to see is dropped from the ground truth rather than labelled as a target that isn't in the image.
+
+Result — apparent radius **5.6 px** (real 6.1) and frame-to-frame change **0.347** (real 0.397) on the experiment stratum. Suite **69 passed**.
+
+**Known residual, not closed.** At matched temporal noise our frames are spatially *smoother* than real: the ratio of temporal to spatial noise is 3.16 for us at every flux versus 1.67 real, and our high-frequency power sits ~10× low. Pure shot noise fixes that ratio, so the difference is spatial correlation — most likely the measured 512 px MTF over-blurring relative to the real 1024 px detector. Ruled out: JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60). A static-texture term was implemented and **reverted** — it cannot move an Immerkær estimate, which is by construction insensitive to structure. Report as a Tier-2 bound; static structure is the least harmful gap for a video predictor, since it does not change between frames.
+
+**Step 4d — two presentation bugs in the comparison, found by looking at the GIF.** Nikola spotted that our panel "changes scenes" and that our dark spots look much darker than real. Both were artefacts of `compare_to_real.py`, not of the data:
+- The GIF concatenated 8 frames from each of 10 clips, so it cut to a different clip every 8 frames. Now animates one continuous clip (experiment-grade by preference); the pooled statistics still use all clips.
+- Every panel was matplotlib-autoscaled to its own min/max, so apparent contrast was set by each source's dynamic range rather than compared. `to_common_grey` now puts every source on one scale (background → 128).
+
+Measuring it properly reversed the conclusion: real particles are *darker* than ours, not lighter (depth 0.47 vs 0.25 on the experiment stratum). Two measurement traps on the way: centre-pixel depth is selection-biased (the detector thresholds on darkness), so it must be area-averaged; and an 85th-percentile background over-reads real's very broad histogram (p5=38, p95=179), so the median is the right reference.
+
+**Particle depth is explicitly not a calibration target.** Raising magnification to chase it moved the number by 0.01, which was the signal to stop — the real frames were contrast-stretched to 0-255 before publication, and a stretch does not preserve intensity ratios. Apparent size and frame-to-frame change survive it; depth does not. `pixel_size_nm` for the experiment stratum now spans 2–8 nm/px (a 6 px particle at 25–95 nm of gold, all standard Au sizes) rather than being fitted. Second time in this step that a metric was nearly tuned to an artefact — the first was the static-texture term.
+
+**Step 4e — particle motion was ~5x too slow.** Nikola noticed our clips barely move. Measured by tracking (trackpy) detected blobs through the real video: real particles step **10.6 px/frame at 6.1 px radius**. Control experiment — render literally frozen particles at the same imaging conditions and run the same detect+link pipeline — gives a **4.8 px centroid-jitter floor**, so real's true motion is ~9.5 px/frame = **1.55 radii/frame**. Coherent stage drift accounts for only 7 %, so it is genuine diffusion. Ours was 0.26–0.47 radii/frame.
+
+This is not cosmetic:
+- At 0.3 radii/frame, **persistence** (predict the last position) is already an excellent predictor, so the Gate-2 comparison against persistence would have been uninformative on position — and the martingale argument would have looked stronger than it is.
+- MSD would have sat barely above the centroid-noise floor.
+- At ~10 px/frame a particle crosses 16 px patch boundaries every frame, which is a materially different learning problem from one drifting 2 px/frame.
+
+Fix: `D` is now derived from a **step-to-radius ratio** per stratum (physics 0.2–1.5, experiment 0.8–2.0) rather than an absolute `uniform(1,4)`, inverting the Rayleigh mean step `1.772*sqrt(D)`. `D` stays constant within a clip even as radii grow, so ground-truth `MSD = 4Dt` remains exact. Result: experiment stratum **1.75 radii/frame** (real 1.55).
+
+**Evaluation requirement discovered here:** per-clip MSD is nearly worthless at experiment-grade particle counts. The estimator is unbiased (mean ratio 0.96–1.02 at every N) but its spread is set purely by particle count — **sd 0.25 at N=4 vs 0.03 at N=512**. Gate 2 must **pool MSD across clips**, never score it per clip. `tests/test_dataset_physics.py` now tests it pooled (the way the evaluation must use it) instead of widening a tolerance until one noisy clip fits, and `verify_clips.py` prints the particle count with a spread warning below N=20.
+
+**Step 4f — the "3× too large" finding was wrong, and it had driven the design.** Nikola reported he could no longer tell a particle from noise in our clips. That was correct, and tracing it invalidated an earlier measurement.
+
+`apparent_radius_px` originally sized particles from thresholded connected components. That is biased low — a threshold captures only the dark core of a noisy blob, and the bias *grows as SNR falls*, so it under-measures exactly where it matters most. Replaced with a **radial-profile half-depth fit**, validated against our own ground truth (recovers true 9.5 px → 8.0, true 4.9 px → 5.0). A scale-selection variant was also tried and rejected: it validates at high SNR but reads a true 4.9 px particle as 22 px at low SNR, where noise correlation dominates.
+
+Corrected numbers:
+
+| | old (component) | **new (radial profile)** |
+|---|---|---|
+| REAL | 6.1 px | **8.0 px** |
+| OURS physics | 12.7 px | **7.0 px** |
+| OURS experiment | 5.6 px | **4.0 px** |
+
+So our particles were never 3× too large — the physics stratum was already the right size, and the "fix" had shrunk the experiment stratum to *half* of real, which is why it went invisible. Experiment `radius_px` raised to 10–16 → measured **7.5 px** against real 8.0.
+
+**The strata split on density and dose, not particle size.** Size is now matched in both; what genuinely differs is particle count and electron dose. `scripts/compare_to_real.py` writes `detectability.png` (raw / matched-filtered / ground-truth overlay, ours and real side by side) as standing evidence that the signal is present even when the eye and a threshold detector cannot find it — which is precisely the argument for a learned model over classical segmentation.
+
+Lesson worth carrying into the write-up: three separate times in Step 4 a number was nearly tuned to an artefact of its own estimator (static texture vs a structure-insensitive noise metric, particle depth vs an unknown contrast stretch, particle size vs a threshold bias). **Validate the estimator against known ground truth before trusting it on real data** — every one of these was caught that way, and the size bug was caught only because the same estimator could be pointed at clips whose answer we already knew.
+
+**Step 4g — the exit criterion, which was the thing actually missing.** Four commits in a row (`2776936`…`0f8bd1f`) moved appearance parameters toward "looks like real" without ever defining *done*. That loop has no fixed point: each appearance statistic shifts when its estimator is refined, and the reference is 75 frames of one experiment with an unknown contrast stretch, so every refinement reopens the question.
+
+**The dataset is not supposed to look like the real video. It is supposed to contain it.** This is domain randomisation: generate a *distribution* of imaging conditions wide enough that real data falls inside its support, so a model trained here has already seen real conditions. Fitting a point estimate of one experiment fits an artefact, and would also make the dataset *narrower* than the phenomenon — the opposite of what Tier-2 transfer needs.
+
+So the criterion is **containment, not equality**: for each statistic that survives an unknown contrast stretch, real must lie between our minimum and our maximum. Falsifiable, and it terminates. `containment_report` in `scripts/compare_to_real.py`:
+
+| statistic | ours min | ours max | real | |
+|---|---|---|---|---|
+| apparent radius (px) | 5.0 | 15.0 | 6.0–8.0 | PASS |
+| \|dI\|/mean | 0.136 | 0.752 | 0.407 | PASS |
+
+Only two statistics qualify — absolute contrast does not survive the stretch, so it is reported and never gated on. **Step 4 appearance work is closed.** It reopens only if a statistic leaves containment, not because a panel looks off.
+
+Reviewing all nine commits against this: exactly one parameter ever circled — experiment `radius_px`, uncontrolled → (5,8) → (10,16). Every other change was monotone progress (water clamp, fixed intensity scale, exact growth time origin, ODE substeps, radius-scaled diffusion), and (10,16) is the correct value. Nothing to revert; HEAD is the best state the tree has been in.
+
+**Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
@@ -285,6 +379,6 @@ class LatentForecaster(nn.Module):
 ## Standing risks
 
 - **Remote access friction** (VPN/IT policy): the reason PC setup is deferred to Step 5 and kept off the local critical path; mitigated by tmux-everything + W&B monitoring; worst case, launches happen on-site and run unattended.
-- **SAM-EM renderer integration** (Step 4) is the main unknown-shaped task — its entry-point reading comes *before* any dependent scheduling.
+- ~~**SAM-EM renderer integration** (Step 4)~~ **Resolved:** the renderer was found (`JamaliLab/LPTEMsimulator`) and re-implemented in `render_bridge.py`; local render matches real SAM-EM appearance. No longer a risk.
 - **Gate 2 failure** is the scientific risk, and it is survivable by design.
 - **Disk on the remote** (~200 GB) — checked in Step 5 before anything is generated.
