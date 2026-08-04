@@ -123,3 +123,73 @@ def test_global_brightness_does_not_leak_particle_size(process):
     mean_r = radii.mean(axis=0)
     corr = np.corrcoef(mean_r, frames.reshape(16, -1).mean(axis=1))[0, 1]
     assert corr < 0, f"{process}: corr={corr:+.3f} -- brightness leaks size"
+
+
+def test_bigger_particles_diffuse_slower():
+    """Stokes--Einstein, ``D = kT / (6 pi eta r)``: D must fall with radius.
+
+    This ran inverted -- ``D`` was the step-per-radius ratio applied at each clip's
+    own radius, giving ``D ~ r^2``, a 20x error across the 8-22 px range with the
+    sign backwards. It is also a shortcut: a probe reading "big blob moves fast"
+    off the latents would score as learned dynamics while having learned an
+    artefact of the generator. Same failure mode as the brightness->size leak.
+
+    Holds ``step_per_radius`` fixed by seeding identically and comparing strata
+    would not isolate it, so compare ``D`` against radius across many clips.
+    """
+    rng = np.random.default_rng(9)
+    radii_and_D = []
+    for i in range(24):
+        _, _, meta, _, radii = build_clip("static", 32, (512, 512), rng)
+        # divide out the per-clip step ratio; what is left must be a function of r
+        radii_and_D.append((float(np.median(radii[radii > 0])),
+                            meta["D"] / meta["step_per_radius"] ** 2))
+    r, d = np.array(radii_and_D).T
+    corr = np.corrcoef(np.log(r), np.log(d))[0, 1]
+    assert corr < -0.9, f"D vs radius correlation {corr:+.2f} -- expected D ~ 1/r"
+
+
+def test_ripening_actually_coarsens():
+    """A clip labelled "Ostwald ripening" must show ripening.
+
+    Nothing else grades this process -- ``EXPONENT["ripening"]`` is None, so no
+    exponent test touches it -- and at the original rate constant it did not
+    coarsen at all: mean radius x1.02, one particle lost in ten, statistically
+    indistinguishable from the ``static`` process over a 100-frame clip. The
+    coarsening timescale is ~r^3/K, so K has to put it inside the clip.
+    """
+    rng = np.random.default_rng(3)
+    growth, survival = [], []
+    for _ in range(6):
+        _, _, _, _, radii = build_clip("ripening", 100, (512, 512), rng)
+        alive = radii > 0
+        mean_r = np.array([radii[alive[:, k], k].mean() for k in range(100)])
+        growth.append(mean_r[-1] / mean_r[0])
+        survival.append(alive[:, -1].sum() / alive[:, 0].sum())
+    assert np.mean(growth) > 1.2, f"mean radius only x{np.mean(growth):.2f}"
+    assert np.mean(survival) < 0.8, f"{np.mean(survival):.0%} of particles survived"
+
+
+@pytest.mark.parametrize("stratum", list(STRATA))
+def test_msd_label_ships_the_lag_it_is_valid_over(stratum):
+    """``MSD = 4Dt`` is only true before particles feel the reflecting box.
+
+    The generator knows where that is; consumers should not have to rediscover it,
+    so ``msd_max_lag`` ships in the metadata. This asserts the label is honest.
+
+    Pooled across clips, for the reason ``test_msd_of_generated_positions_matches_4Dt``
+    documents -- and note ``msd_max_lag`` bounds *box bias* only. It cannot bound
+    estimator variance, which is set by particle count and by the fact that a lag
+    approaching the clip length has almost no independent start frames left. Both
+    ceilings are real; this one is the one the generator can compute.
+    """
+    rng = np.random.default_rng(12)
+    ratios = []
+    for _ in range(8):
+        _, _, meta, pos, _ = build_clip("static", 100, (512, 512), rng, stratum=stratum)
+        lag = meta["msd_max_lag"]
+        assert lag >= 1
+        slope = float(np.polyfit(np.arange(1, lag + 1), compute_msd(pos)[:lag], 1)[0])
+        ratios.append(slope / (4 * meta["D"]))
+    pooled = float(np.mean(ratios))
+    assert abs(pooled - 1.0) < 0.15, f"{stratum}: pooled MSD/4D = {pooled:.3f}"

@@ -35,6 +35,14 @@ THICKNESS_WATER = 150.0
 THICKNESS_CELL = 50.0
 CONVERSION_FACTOR = 37.46
 
+# Readout sigma in electrons. Upstream uses 1.0, but upstream also low-passed its
+# read noise along with the signal, which hid what 1.0 costs: a direct electron
+# detector *counts* electrons, and sigma = 1.0 e means it cannot tell zero from one
+# -- at the 0.45 e/px background of our lowest dose it clipped a third of every
+# frame to black. 0.3 e is the effective read noise of a real DED and keeps low-dose
+# clips usable. Raise it to model a scintillator-coupled CCD instead.
+READ_NOISE = 0.3
+
 
 def draw_spheres(
     positions: np.ndarray,
@@ -97,6 +105,7 @@ def render_frame(
     conversion_factor: float = CONVERSION_FACTOR,
     mtf: np.ndarray | None = None,
     add_noise: bool = True,
+    read_noise: float = READ_NOISE,
     rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     """Form one LPTEM image from a gold-thickness map (Beer--Lambert + noise + MTF).
@@ -108,9 +117,15 @@ def render_frame(
     where water is displaced by the particle (``t_water = max(thickness_water -
     t_gold, 0)``  a particle thicker than the cell leaves no water, never negative)
     and the SiNx window contributes both walls (``2 * thickness_cell``). Gold has the
-    shortest IMFP, so particle regions attenuate most and appear darker. Poisson shot
-    noise (dominant in LPTEM) and Gaussian read noise are added when ``add_noise``,
-    then an optional MTF low-pass is applied in Fourier space.
+    shortest IMFP, so particle regions attenuate most and appear darker.
+
+    **Order matters.** Poisson shot noise, then the MTF, then Gaussian read noise --
+    because charge spreading happens *at* the sensor: it blurs the electron events
+    that arrived, and the readout electronics add their noise downstream of it.
+    Blurring the read noise too (the order this used to have) strips high-frequency
+    power that a real detector keeps, and it does so by a factor independent of dose:
+    the ratio of temporal to spatial noise sat at 2.9 at every flux, against 1.67
+    measured on real video. In this order it is 1.3-1.5 and moves with flux.
 
     Parameters
     ----------
@@ -119,6 +134,9 @@ def render_frame(
     mtf : np.ndarray or None
         ``(H, W)`` modulation transfer function (fft-shifted, DC at centre). If
         ``None``, no optical blur is applied.
+    read_noise : float
+        Gaussian readout sigma in electrons (see :data:`READ_NOISE`). The one
+        detector parameter a real camera actually varies, so it is a knob.
     rng : np.random.Generator or None
         Seeded generator for reproducible noise; ``None`` uses a fresh default.
 
@@ -140,12 +158,16 @@ def render_frame(
         if rng is None:
             rng = np.random.default_rng()
         img = rng.poisson(img).astype(float)
-        img = rng.normal(img, 1.0)
 
     if mtf is not None:
         ft = fftshift(fft2(img))
         ft = ft * mtf
-        img = np.abs(ifft2(ifftshift(ft)))
+        # real, not abs: MTF ringing beside a dark core is genuinely negative, and
+        # folding it positive puts a bright halo where the optics put a dark one.
+        img = np.real(ifft2(ifftshift(ft)))
+
+    if add_noise:
+        img = rng.normal(img, read_noise)
 
     return img * conversion_factor
 

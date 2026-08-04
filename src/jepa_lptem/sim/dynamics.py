@@ -11,7 +11,6 @@ Processes
 - ``evolve_radii``: independent single-particle ODEs for clean, exponent-controlled
   data — diffusion-limited growth (r ~ t^1/3), reaction-limited growth (r ~ t^1/2),
   and dissolution (linear shrink to 0).
-- ``merge_on_contact``: volume-conserving coalescence of overlapping particles.
 - ``ripen_population``: coupled, mass-conserving Ostwald ripening (LSW) for a whole
   population — small particles feed large ones, count drops, the mean coarsens, and
   total volume is conserved. This is the physically faithful growth mode.
@@ -134,46 +133,6 @@ def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str, substeps: i
             cur = np.maximum(cur + dr * sub_dt, 0.0)
         r[:, i] = cur
     return np.arange(n_steps) * dt, r
-
-
-def merge_on_contact(pos: np.ndarray, rad: np.ndarray):
-    """Merge every overlapping pair into one volume-conserving particle.
-
-    Two particles overlap when ``dist < r_i + r_j``. The merged particle has
-    ``r_new = (r_i^3 + r_j^3)^(1/3)`` (volume conserved) at the volume-weighted mean
-    position. Repeats until no overlaps remain (a merge can create a new overlap).
-
-    Parameters
-    ----------
-    pos : np.ndarray
-        Shape ``(N, 2)`` positions.
-    rad : np.ndarray
-        Shape ``(N,)`` radii.
-
-    Returns
-    -------
-    (pos, rad) : tuple[np.ndarray, np.ndarray]
-        Reduced arrays after all merges.
-    """
-    pos = np.asarray(pos, dtype=float).copy()
-    rad = np.asarray(rad, dtype=float).copy()
-    merged = True
-    while merged and len(rad) > 1:
-        merged = False
-        for i in range(len(rad)):
-            for j in range(i + 1, len(rad)):
-                if np.linalg.norm(pos[i] - pos[j]) < rad[i] + rad[j]:
-                    vi, vj = rad[i] ** 3, rad[j] ** 3
-                    v = vi + vj
-                    pos[i] = (vi * pos[i] + vj * pos[j]) / v
-                    rad[i] = v ** (1 / 3)
-                    pos = np.delete(pos, j, axis=0)
-                    rad = np.delete(rad, j)
-                    merged = True
-                    break
-            if merged:
-                break
-    return pos, rad
 
 
 def ripen_population(

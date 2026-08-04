@@ -51,6 +51,27 @@ MIN_VISIBLE_RADIUS_PX = 2.0
 # ground truth MSD = 4Dt remains exact -- that is what the evaluation grades.
 STEP_MEAN_PER_SQRT_D = 1.772
 
+# The real measurement is a single (radius, step) point: 1.55 radii/frame at an
+# 8 px particle. That pins the *scale* of D; it says nothing about how D varies with
+# size, and Stokes-Einstein does: D = kT / (6 pi eta r), so bigger particles diffuse
+# SLOWER. Applying the ratio at each clip's own radius instead made D ~ r^2 -- the
+# scaling inverted, a 20x error across the 8-22 px range, and a size->motion shortcut
+# ("big blob moves fast") of exactly the kind the brightness->size leak was. Anchor
+# the ratio here and let D fall off as 1/r from it; at 8 px nothing changes, so the
+# containment result on the experiment stratum is unaffected.
+R_REF_PX = 8.0
+
+# Reflection off the box walls biases MSD downward at long lag, so the MSD = 4Dt
+# label is only true up to some lag. Ship that lag with the label rather than
+# leaving each consumer to rediscover it: valid while the free MSD 4*D*lag stays
+# under this fraction of the box area. Calibrated, not derived -- measured pooled
+# MSD/4D over 8 clips per stratum: 0.02 reads 0.97 physics / 0.85 experiment, 0.005
+# reads 1.00 / 0.91. The fast experiment-stratum clips are what set it; they land at
+# lag 16, which is the ceiling test_msd_of_generated_positions_matches_4Dt had
+# hardcoded. Lower it further only if a stratum diffuses faster still -- below ~6
+# lags the fit runs out of points and variance replaces the bias it removed.
+MSD_BIAS_FRACTION = 0.005
+
 # Two strata, because "match the real experiment" and "measure physics precisely"
 # pull in opposite directions and the dataset has to serve both.
 #
@@ -86,7 +107,12 @@ STEP_MEAN_PER_SQRT_D = 1.772
 # size is now matched in both strata; what genuinely differs is how many particles
 # there are and at what dose.
 STRATA = {
-    "physics": dict(radius_px=(8.0, 22.0), n=(6, 16), beam_flux=(2.0, 75.0),
+    # beam_flux floor is 4.0, not 2.0: at 2.0 the background is 0.45 electrons per
+    # pixel and the frame clips to black over 13 % of its area even at READ_NOISE.
+    # A clip that has lost an eighth of its dynamic range to a floor is not a
+    # low-dose sample, it is a censored one, and no probe can recover physics from
+    # it. The old ordering blurred the read noise away and hid this.
+    "physics": dict(radius_px=(8.0, 22.0), n=(6, 16), beam_flux=(4.0, 75.0),
                     pixel_size_nm=(1.5, 4.0), max_coverage=0.09, growth_ratio=5.0,
                     step_per_radius=(0.2, 1.5)),
     # growth_ratio is smaller here because the clip *ends* around 6 px: at 5x the
@@ -183,8 +209,15 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int],
     step_ratio = float(rng.uniform(*cfg["step_per_radius"]))
     t0_growth, dt_growth = 0.0, 1.0
     if process == "ripening":
+        # K sets the coarsening timescale, which is ~r^3/K. At K=6 and r~15 px that
+        # is ~560 frames, so a 100-frame clip showed mean radius x1.02 and lost one
+        # particle in ten -- labelled "Ostwald ripening", indistinguishable from
+        # "static", and graded by nothing (EXPONENT["ripening"] is None). K=60 puts
+        # the timescale inside the clip: count halves, mean radius x1.30. Higher
+        # coarsens harder but leaves too few particles to measure a size
+        # distribution on (K=150 ends at ~3).
         radii = ripen_population(rng.uniform(8.0, 22.0, n), n_steps=n_frames, dt=1.0,
-                                 K=6.0, min_radius=3.0)[1]
+                                 K=60.0, min_radius=3.0)[1]
     elif process in ("diffusion", "reaction"):
         r0 = rng.uniform(0.8 * R0_UNITS, 1.2 * R0_UNITS, n)
         t0_growth, dt_growth = growth_time_axis(process, float(r0.mean()), n_frames,
@@ -201,12 +234,15 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int],
     radii[radii < MIN_VISIBLE_RADIUS_PX] = 0.0
 
     typical_radius = float(np.median(radii[radii > 0])) if (radii > 0).any() else 1.0
-    D = float((step_ratio * typical_radius / STEP_MEAN_PER_SQRT_D) ** 2)
+    # step_ratio is the step-per-radius at R_REF_PX; D falls off as 1/r from there.
+    D = float((step_ratio * R_REF_PX / STEP_MEAN_PER_SQRT_D) ** 2 * (R_REF_PX / typical_radius))
     pos = simulate_brownian(n, n_frames, dt=1.0, D=D, box=size,
                             init_positions=init_pos, rng=rng)[1]
+    max_lag = max(1, min(n_frames - 1, int(MSD_BIAS_FRACTION * h * w / (4.0 * D))))
 
     meta = {"process": process, "stratum": stratum, "exponent": EXPONENT[process],
             "n_particles": n, "D": D, "step_per_radius": step_ratio,
+            "msd_max_lag": max_lag,
             "t0_growth": t0_growth, "dt_growth": dt_growth,
             "beam_flux": float(np.exp(rng.uniform(*np.log(cfg["beam_flux"])))),
             "pixel_size_nm": float(rng.uniform(*cfg["pixel_size_nm"]))}

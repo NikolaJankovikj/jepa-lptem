@@ -4,7 +4,6 @@ from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
 from jepa_lptem.sim.dynamics import (
     GROWTH_K,
     evolve_radii,
-    merge_on_contact,
     ripen_population,
     simulate_brownian,
 )
@@ -69,35 +68,6 @@ def test_evolve_radii_shapes_and_multiple_particles():
     assert t.shape == (100,)
     assert r.shape == (3, 100)
     assert np.allclose(r[:, 0], [1.0, 2.0, 3.0])
-
-
-# --- coalescence (volume-conserving fusion) -----------------------------------
-
-def test_coalescence_conserves_volume():
-    pos = np.array([[0.0, 0.0], [1.0, 0.0]])
-    rad = np.array([3.0, 4.0])
-    pos2, rad2 = merge_on_contact(pos, rad)
-    assert len(rad2) == 1
-    assert abs(rad2[0] ** 3 - (3.0 ** 3 + 4.0 ** 3)) < 1e-9
-    # position is the volume-weighted mean
-    expected_x = (27 * 0.0 + 64 * 1.0) / 91
-    assert abs(pos2[0, 0] - expected_x) < 1e-9
-
-
-def test_no_merge_when_far_apart():
-    pos = np.array([[0.0, 0.0], [100.0, 0.0]])
-    rad = np.array([3.0, 4.0])
-    pos2, rad2 = merge_on_contact(pos, rad)
-    assert len(rad2) == 2
-
-
-def test_multiple_merges_cascade():
-    # three touching particles collapse to one; total volume conserved
-    pos = np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]])
-    rad = np.array([2.0, 2.0, 2.0])
-    pos2, rad2 = merge_on_contact(pos, rad)
-    assert len(rad2) == 1
-    assert abs(rad2[0] ** 3 - 3 * 2.0 ** 3) < 1e-9
 
 
 # --- mass-conserving Ostwald ripening (coupled population) --------------------

@@ -7,6 +7,7 @@ from jepa_lptem.sim.render_bridge import (
     to_uint8,
     background_intensity,
     BACKGROUND_LEVEL,
+    CONVERSION_FACTOR,
 )
 
 
@@ -179,3 +180,37 @@ def test_render_frame_matches_upstream_lptemsimulator_reference():
                              + 2 * 50 / 144)) * 37.46
     got = render_frame(np.full((8, 8), gold_nm), mtf=None, add_noise=False)
     assert np.allclose(got, expected, rtol=1e-12)
+
+
+def test_mtf_blurs_shot_noise_but_not_read_noise():
+    """Read noise must be added *after* the MTF, not before.
+
+    Charge spreading happens at the sensor: it blurs the electron events that
+    arrived, and the readout electronics add their noise downstream of it. When the
+    read noise was blurred too, the ratio of temporal to spatial noise sat at ~2.9
+    at *every* flux -- dose-independent, which is the signature of a noise term
+    being low-passed that shouldn't be. Real video measures 1.67.
+
+    Detects the ordering directly: with the MTF applied to a noise-free image, the
+    only thing left un-blurred is the read noise, so the frame must still carry
+    pixel-to-pixel variance of about ``read_noise`` after a heavy low-pass.
+    """
+    gold = np.zeros((64, 64))
+    mtf = np.zeros((64, 64))
+    mtf[30:34, 30:34] = 1.0  # brutal low-pass: kills anything it is applied to
+    img = render_frame(gold, mtf=mtf, read_noise=3.0, beam_flux=0.0,
+                       rng=np.random.default_rng(0)) / CONVERSION_FACTOR
+    assert abs(img.std() - 3.0) < 0.3, f"read noise was blurred: std={img.std():.2f}"
+
+
+def test_mtf_ringing_stays_negative():
+    """``np.real``, not ``np.abs``: ringing beside a dark core is genuinely
+    negative, and folding it positive puts a bright halo where the optics put a
+    dark one."""
+    gold = np.zeros((32, 32))
+    gold[16, 16] = 400.0  # sharp dark point -> guaranteed ringing under a low-pass
+    mtf = np.zeros((32, 32))
+    mtf[12:21, 12:21] = 1.0
+    img = render_frame(gold, mtf=mtf, add_noise=False, beam_flux=100.0)
+    flat = render_frame(np.zeros((32, 32)), mtf=mtf, add_noise=False, beam_flux=100.0)
+    assert (img - flat).min() < 0, "no negative excursion -- abs() folded the ringing"

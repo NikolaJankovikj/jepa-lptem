@@ -228,6 +228,65 @@ Reviewing all nine commits against this: exactly one parameter ever circled — 
 
 **Decided here, needed by Step 6:** preprocessing must **crop** to 256², not resize. Real 1024² frames resized to 256² shrink those 6 px particles to 1.5 px — invisible. Our synthetic scale is chosen so both land at the same apparent size after preprocessing.
 
+**Step 4h — logical review of the simulation, before committing 50 GB to it.** Four
+things that would each have written a wrong label into every clip. None was caught by
+the existing suite, which is the common thread: every one lived in a quantity nothing
+graded.
+
+1. **Diffusion scaled the wrong way with size.** `D` was the step-per-radius ratio
+   applied at each clip's own radius, so `D ~ r^2` — bigger particles diffused
+   *faster*. Stokes–Einstein says `D = kT/6*pi*eta*r`, i.e. slower. A 20x error across
+   the 8–22 px range with the sign inverted, and a size→motion shortcut of exactly the
+   kind the brightness→size leak was: a probe reading "big blob moves fast" off the
+   latents would have scored as learned dynamics. The real measurement (1.55 radii/frame
+   at 8 px) is a single `(r, D)` point — it pins the *scale*, not the law. `R_REF_PX`
+   anchors it there and `D` falls off as `1/r`; nothing changes at 8 px, so the
+   containment result is unaffected. Guarded by `test_bigger_particles_diffuse_slower`.
+
+2. **`ripening` was indistinguishable from `static`.** The coarsening timescale is
+   `~r^3/K`; at `K=6` and `r~15` px that is ~560 frames, so a 100-frame clip showed
+   mean radius x1.02 and lost one particle in ten. A quarter of the dataset was
+   labelled Ostwald ripening and rendered as static particles. Nothing caught it
+   because `EXPONENT["ripening"]` is None, so no exponent test touches this process.
+   `K=60` puts the timescale inside the clip: count halves, mean radius **x1.30**
+   (static x1.00, growth modes x4.96). `K=150` coarsens harder but ends at ~3 particles,
+   too few to measure a size distribution on. Guarded by `test_ripening_actually_coarsens`.
+
+3. **The MTF was applied after the read noise — this was the "unclosed residual".**
+   Charge spreading happens *at* the sensor: it blurs the electron events that arrived,
+   and the readout adds its noise downstream. Blurring the read noise too stripped
+   high-frequency power a real detector keeps, and did so *independently of dose* —
+   which is why the temporal/spatial noise ratio sat at 2.9 at every flux against real's
+   1.67, and why no parameter setting could move it. It was never the 512 px MTF. In the
+   correct order the ratio spans **1.65 (flux 4) to 2.69 (flux 75)**, so real's 1.67 is
+   now *inside* our span rather than outside it — the same containment criterion Step 4g
+   settled on, applied to the statistic that had resisted it. Also `np.real` not
+   `np.abs`: ringing beside a dark core is genuinely negative, and folding it positive
+   puts a bright halo where the optics put a dark one.
+
+   Two consequences the old blur had been hiding, both fixed here: `READ_NOISE` drops
+   1.0 → **0.3 e** (a direct electron detector *counts* electrons; sigma = 1.0 e cannot
+   tell zero from one, and at our lowest dose it clipped a third of every frame to
+   black), and the physics-stratum `beam_flux` floor rises 2.0 → **4.0**. Zero-clipping
+   across 20 clips is now max 1.22 %, mean 0.15 %. Containment still passes on both
+   gated statistics, and `|dI|/mean` moved from 0.253 to **0.306** against real 0.397.
+
+4. **`MSD = 4Dt` shipped without the lag it is valid over.** Reflection off the box
+   biases MSD down at long lag; the test knew this (`short = 16`, hardcoded) but `D`
+   went into the manifest with no ceiling attached. `msd_max_lag` now ships per clip,
+   calibrated on measured pooled bias — it bounds *box bias* only, not the estimator
+   variance that particle count sets, and both ceilings are real.
+
+Also deleted `merge_on_contact`: 47 lines, tested, advertised in the `dynamics.py`
+docstring as a feature of the dataset, and called from no generation path — coalescence
+appeared in zero clips.
+
+Suite **72 passed**. What generalises: three of these four hid in a quantity no test
+graded, and the fourth was misdiagnosed for four commits because the symptom (spatial
+noise too low) was measured but the mechanism was never traced. The Step-4 lesson was
+"validate the estimator against known ground truth"; the companion is **check that
+every label the dataset ships is graded by something**.
+
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
 ---
