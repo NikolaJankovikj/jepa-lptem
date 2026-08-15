@@ -25,18 +25,36 @@ from scipy import ndimage
 from jepa_lptem.eval.observables import compute_msd, fit_growth_exponent
 
 
-def detect_dark_blobs(frame: np.ndarray, k: float = 1.8, min_area: int = 80):
+def detect_dark_blobs(frame: np.ndarray, k: float = 1.8, min_area: int = 80,
+                      flat_sigma: float = 40.0):
     """Fair classical baseline detector: find dark particles in a rendered frame.
 
-    Gaussian-blur to suppress per-pixel Poisson noise (particles are many px wide,
-    noise is 1 px), threshold below ``mean - k*std``, take connected components,
-    and drop specks below ``min_area``. Shares no code with the renderer. A simple
-    detector like this is *expected* to struggle at high noise / heavy overlap —
-    that gap is the motivation for a learned model, not a defect of the video.
+    Flat-field against a large-scale background estimate, Gaussian-blur to suppress
+    per-pixel Poisson noise (particles are many px wide, noise is 1 px), threshold
+    below ``mean - k*std``, take connected components, drop specks below
+    ``min_area``. Shares no code with the renderer. A simple detector like this is
+    *expected* to struggle at high noise / heavy overlap — that gap is the
+    motivation for a learned model, not a defect of the video.
+
+    **The flat-field is load-bearing** now that the renderer has a real illumination
+    gradient (``render_bridge.thickness_field``). ``f.mean() - k*f.std()`` is a
+    *global* threshold, so against a background varying by 74 % of the mean it calls
+    the dark half of the frame one enormous particle: measured round-trip position
+    error blew up to 24-98 px and the detected/true count ratio ranged 0.20-2.25.
+    With the flat-field the same frames come back at 0.5-1.7 px. The information was
+    never lost — the detector was assuming a flat field that real LPTEM does not
+    have either, which is why every real pipeline flat-fields first.
+
+    The estimate is a heavy lowpass of the frame itself, so this stays independent
+    of the renderer: it uses no knowledge of the thickness field or of where the
+    particles are. ``flat_sigma`` must stay well above the particle diameter or the
+    particles start suppressing themselves.
 
     Returns ``(centroids (M,2) as (row,col), labels image)``.
     """
-    f = ndimage.gaussian_filter(frame.astype(float), sigma=2.5)
+    f = frame.astype(float)
+    f = f / np.maximum(ndimage.gaussian_filter(f, flat_sigma), 1e-6)
+    f = ndimage.gaussian_filter(f, sigma=2.5)
     mask = f < (f.mean() - k * f.std())
     mask = ndimage.binary_opening(mask, iterations=1)
     lab, n = ndimage.label(mask)

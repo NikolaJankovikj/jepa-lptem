@@ -9,7 +9,9 @@ Each ``.npz`` holds:
     frames    uint8  (T, H, W)   the LPTEM video (what V-JEPA sees)
     positions float  (N, T, 2)   particle centres (row, col), ground truth
     radii     float  (N, T)      particle radii in px, ground truth (0 = absent)
-and clip-level scalars (process, exponent, D, ...) mirrored into the manifest.
+and clip-level scalars (process, exponent, D, drift, ...) mirrored into the
+manifest, plus ``merge_events`` (M, 3) as ``[frame, survivor, absorbed]`` -- the
+exact coalescence times Step 12 grades anticipation lead-time against.
 
 Usage (local smoke):
     uv run python scripts/generate_dynamics_dataset.py --out data/synthetic/smoke \
@@ -56,12 +58,18 @@ def main() -> None:
     with manifest.open("w") as mf:
         for i in range(args.n_videos):
             process = args.processes[i % len(args.processes)]
-            stratum = "experiment" if i % EXPERIMENT_EVERY == EXPERIMENT_EVERY - 1 else "physics"
+            # Cycle the stratum over *rounds* of processes, not over clips: with 5
+            # processes and EXPERIMENT_EVERY = 5, `i % EXPERIMENT_EVERY` locks the
+            # experiment stratum onto one single process forever.
+            stratum = ("experiment"
+                       if (i // len(args.processes)) % EXPERIMENT_EVERY == EXPERIMENT_EVERY - 1
+                       else "physics")
             positions_t, radii_t, meta, pos, radii = build_clip(
                 process, args.n_frames, size, rng, stratum=stratum)
             video = render_video(positions_t, radii_t, size, mtf=mtf, rng=rng,
                                  pixel_size_nm=meta["pixel_size_nm"],
-                                 beam_flux=meta["beam_flux"])
+                                 beam_flux=meta["beam_flux"],
+                                 thickness_sd_nm=meta["thickness_sd_nm"])
             # one fixed physical scale for the whole dataset, so absolute contrast
             # survives and overall brightness cannot leak particle size
             frames = np.stack([to_uint8(f, beam_flux=meta["beam_flux"]) for f in video])
@@ -74,7 +82,8 @@ def main() -> None:
             print(f"[{i + 1}/{args.n_videos}] {name}  frames {frames.shape}  "
                   f"{stratum:10s} N={meta['n_particles']:2d}  "
                   f"flux={meta['beam_flux']:5.1f}  px={meta['pixel_size_nm']:.1f}nm  "
-                  f"r_max={radii.max():.1f}px")
+                  f"r_max={radii.max():.1f}px  merges={meta['n_merges']}  "
+                  f"drift={meta['drift_per_step']:.2f}/step")
 
     print(f"\nWrote {args.n_videos} clips + manifest to {args.out}")
 

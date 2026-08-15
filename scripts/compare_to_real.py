@@ -62,8 +62,18 @@ def radial_psd(frames, k=8):
 
 
 def _one_psd(frame):
+    """Per-pixel power, so frames of different sizes are actually comparable.
+
+    ``np.fft.fft2`` is unnormalized, so ``E|F(k)|^2 = N sigma^2`` -- the level
+    scales with the pixel count. Without the ``/ f.size`` this panel compared our
+    512^2 renders against 1024^2 real and LPTEMsimulator frames and read a flat
+    **4x** deficit at every frequency that was purely image size: cropping the same
+    real frames 1024 -> 512 reproduced it (measured ratio 3.7-4.1 across the band).
+    That is the wrong way for a plot to be wrong -- it made the one statistic we
+    had *not* closed look worse than it is.
+    """
     f = frame / frame.mean()
-    p = np.abs(np.fft.fftshift(np.fft.fft2(f - f.mean()))) ** 2
+    p = np.abs(np.fft.fftshift(np.fft.fft2(f - f.mean()))) ** 2 / f.size
     h, w = p.shape
     yy, xx = np.mgrid[:h, :w]
     r = np.hypot(yy - h // 2, xx - w // 2).astype(int)

@@ -43,6 +43,69 @@ CONVERSION_FACTOR = 37.46
 # clips usable. Raise it to model a scintillator-coupled CCD instead.
 READ_NOISE = 0.3
 
+# 1-sigma liquid-thickness variation across the cell, in nm.
+#
+# Real LPTEM illumination is not flat. Measured on the Au-nanorod video (40-px
+# Gaussian lowpass, so particles are suppressed): the large-scale background has
+# sd/mean = 0.212 and a 1-99 percentile spread of 0.74 -- it varies by 74 % of the
+# mean across the field of view, and carries 26 % of the frame's total variance.
+# Ours read 0.006, a 34x gap, and it was the whole of the low-frequency deficit in
+# the radial power spectrum.
+#
+# The amplitude is not fitted to that curve. Intensity goes as exp(-t/IMFP_WATER),
+# so sd(ln I) = sd(t)/185, and reproducing 0.212 needs sd(t) ~ 39 nm -- about +-26 %
+# on a 150 nm cell, which is what a bulging SiNx window does. This is the scalar
+# becoming the field it always should have been.
+#
+# It matters past appearance: V-JEPA predicts masked spatiotemporal blocks, and
+# against a byte-identical uniform background predicting a masked *background*
+# block is free. Real background needs spatial context to predict. A flat
+# background is a free lunch in the pretraining objective that does not exist in
+# real data.
+THICKNESS_SD_NM = 39.0
+
+
+def thickness_field(image_size, sd_nm: float = THICKNESS_SD_NM, n_modes: int = 3,
+                    rng: np.random.Generator | None = None) -> np.ndarray:
+    """Smooth, zero-mean liquid-thickness variation across the cell, in nm.
+
+    A handful of low-order Fourier modes with random phase and a ``1/k^2`` (red)
+    amplitude, so the large scales dominate the way a window bulge does rather than
+    looking like filtered noise. Normalized to exactly ``sd_nm`` so the amplitude is
+    a parameter and not an accident of which phases were drawn.
+
+    Zero-mean by construction (each mode spans a whole number of periods), which is
+    what keeps :func:`background_intensity` -- and therefore the fixed ``to_uint8``
+    scale that stops brightness leaking particle size -- valid unchanged. The one
+    residual is Jensen: ``E[exp(-(t0+d)/L)] > exp(-t0/L)``, so the realised mean
+    background sits ~2 % above the analytic value at ``sd_nm = 39``. That is far
+    inside the 4x headroom and is independent of particle size, so it shifts no
+    label.
+
+    ponytail: static within a clip -- it models the beam-profile / window-shape
+    component, which really is fixed in detector coordinates. The part of the
+    structure that lives in *sample* coordinates should translate with the stage
+    drift; real background moves at only 0.0046/frame against a 0.212 sd, so the
+    static field carries almost all of the effect. Upgrade path if it matters:
+    evaluate the modes at coordinates offset by ``drift * t``, which is exact and
+    seamless because the field is periodic.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    h, w = image_size
+    yy = np.arange(h)[:, None] / h
+    xx = np.arange(w)[None, :] / w
+    field = np.zeros((h, w))
+    for ky in range(n_modes + 1):
+        for kx in range(n_modes + 1):
+            if ky == 0 and kx == 0:
+                continue
+            amp = rng.normal() / (ky ** 2 + kx ** 2)
+            field += amp * np.cos(2 * np.pi * (ky * yy + kx * xx)
+                                  + rng.uniform(0, 2 * np.pi))
+    field -= field.mean()
+    return field / field.std() * sd_nm
+
 
 def draw_spheres(
     positions: np.ndarray,
@@ -181,6 +244,7 @@ def render_video(
     mtf: np.ndarray | None = None,
     add_noise: bool = True,
     rng: np.random.Generator | None = None,
+    thickness_sd_nm: float = 0.0,
     **render_kwargs,
 ) -> np.ndarray:
     """Render a full clip from per-frame particle states.
@@ -190,6 +254,12 @@ def render_video(
     positions_t, radii_t : sequence
         Length ``T`` sequences; ``positions_t[i]`` is ``(N_i, 2)`` and
         ``radii_t[i]`` is ``(N_i,)`` for frame ``i`` (particle counts may vary).
+    thickness_sd_nm : float
+        1-sigma liquid-thickness variation (see :func:`thickness_field`). Drawn once
+        per clip -- it is the shape of one cell, so it must not change between
+        frames. ``0.0`` = the flat background this used to have; the unit tests keep
+        that so they grade the image-formation physics without a random field in the
+        way, and the generator passes the real value.
     image_size, pixel_size_nm, mtf, add_noise, rng, **render_kwargs :
         Forwarded to :func:`draw_spheres` / :func:`render_frame`.
 
@@ -200,6 +270,10 @@ def render_video(
     """
     if rng is None and add_noise:
         rng = np.random.default_rng()
+    if thickness_sd_nm > 0:
+        base = render_kwargs.pop("thickness_water", THICKNESS_WATER)
+        render_kwargs["thickness_water"] = base + thickness_field(
+            image_size, thickness_sd_nm, rng=rng)
     frames = []
     for pos, rad in zip(positions_t, radii_t):
         _, gold = draw_spheres(pos, rad, image_size, pixel_size_nm=pixel_size_nm)

@@ -14,6 +14,10 @@ Processes
 - ``ripen_population``: coupled, mass-conserving Ostwald ripening (LSW) for a whole
   population — small particles feed large ones, count drops, the mean coarsens, and
   total volume is conserved. This is the physically faithful growth mode.
+- ``coalesce``: volume-conserving merge-on-contact over a pre-generated walk. The
+  only process where particles interact, and the only source of *events* — a
+  discrete, exactly-timestamped thing that happens, which is what RQ2 (does
+  prediction error rise before an event?) needs to be gradeable at all.
 """
 
 from __future__ import annotations
@@ -31,16 +35,29 @@ def simulate_brownian(
     D: float,
     init_positions: np.ndarray | None = None,
     box: tuple[float, float] | None = None,
+    drift: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
 ):
-    """Independent 2D Brownian trajectories — the position ground truth for MSD.
+    """2D Brownian trajectories plus coherent stage drift — the position ground truth.
 
     Each coordinate takes Gaussian steps of variance ``2 D dt``, so the ensemble
     mean-squared displacement grows as ``MSD(t) = 4 D t`` (checked against
-    ``eval.observables.compute_msd`` in the tests). Position is a martingale: the
-    best predictor of the next frame is the current one, which is exactly why the
-    model can only be graded on *statistics* (MSD, displacement distribution),
-    never on predicting an individual step.
+    ``eval.observables.compute_msd`` in the tests) *once the drift is removed*.
+
+    The Brownian part is a martingale: the best predictor of the next frame is the
+    current one, which is exactly why the model can only be graded on *statistics*
+    (MSD, displacement distribution), never on predicting an individual step. Drift
+    is the opposite — a rigid, constant-velocity translation of the whole field,
+    and the one component of real LPTEM motion that a forecaster can actually get
+    right. Without it the generator hands persistence an optimal strategy on the
+    entire position axis, which would make the Gate-2 comparison against
+    persistence unwinnable by construction rather than by evidence.
+
+    Drift is applied *after* the reflecting fold, so it stays an exact rigid
+    translation: pairwise distances are untouched (coalescence is unaffected) and
+    the eval removes it exactly by subtracting ``drift * t``. The caller is
+    responsible for insetting ``box`` so the drifted particles stay in frame — see
+    :func:`jepa_lptem.sim.dataset.build_clip`.
 
     Parameters
     ----------
@@ -54,6 +71,9 @@ def simulate_brownian(
     box : (float, float) or None
         ``(height, width)``; when set, coordinates reflect off ``[0, size]`` walls
         so particles stay in frame. ``None`` = free diffusion (for clean MSD).
+    drift : np.ndarray or None
+        Shape ``(2,)`` stage-drift velocity in px per unit time, added coherently
+        to every particle. ``None`` = no drift.
     rng : np.random.Generator or None
         Seeded generator for reproducibility.
 
@@ -85,10 +105,17 @@ def simulate_brownian(
             folded = np.mod(pos[..., axis], period)
             pos[..., axis] = np.where(folded > size, period - folded, folded)
 
-    return np.arange(n_steps) * dt, pos
+    t = np.arange(n_steps) * dt
+    if drift is not None:
+        # after the fold, so drift stays a rigid translation rather than something
+        # the walls can reverse for one particle and not another
+        pos = pos + np.asarray(drift, dtype=float)[None, None, :] * t[None, :, None]
+
+    return t, pos
 
 
-def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str, substeps: int = 10):
+def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str,
+                 k: np.ndarray | float | None = None, substeps: int = 10):
     """Integrate per-particle radius ODEs (independent particles).
 
     Parameters
@@ -98,9 +125,24 @@ def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str, substeps: i
     n_steps, dt : int, float
         Number of frames and timestep.
     mode : {"diffusion", "reaction", "dissolution"}
-        ``diffusion``: ``dr/dt = K / r^2`` -> ``r ~ t^(1/3)`` (LSW, diffusion-limited).
+        ``diffusion``: ``dr/dt = K / r^2`` -> ``r ~ t^(1/3)`` (diffusion-limited).
         ``reaction`` : ``dr/dt = K / r``   -> ``r ~ t^(1/2)`` (reaction-limited).
         ``dissolution``: ``dr/dt = -K``    -> linear shrink, clamped at 0.
+
+        These are *single-particle* ODEs chosen to produce a clean, exactly-known
+        exponent -- they are not the coupled LSW population law, which lives in
+        :func:`ripen_population`.
+    k : np.ndarray, float or None
+        Rate constant. Scalar, or shape ``(N,)`` for a **per-particle** rate.
+        ``None`` = ``GROWTH_K[mode]``. A per-particle ``k`` is what stops the size
+        distribution collapsing: these ODEs are contractions on ``r``
+        (``dr_final/dr0 = (r0/r_final)^(p-1)``), so a population sharing one ``k``
+        converges to a single radius -- measured relative sd fell 0.095 -> 0.0007
+        over a 5x growth clip, i.e. a delta function, on the exact observable
+        (size distribution) the evaluation grades. With ``r0_i`` fixed to
+        ``(p k_i t0)^(1/p)`` every particle sits on the same pure power law from a
+        common nucleation time, so the ratio ``r_i / r_j`` is *constant* over the
+        clip and the ensemble mean is exactly ``t^(1/p)``.
     substeps : int
         Euler substeps per frame (as in :func:`ripen_population`). These ODEs are
         stiffest at small ``r`` -- ``dr/dt = K/r^2`` can move the radius tens of
@@ -115,7 +157,7 @@ def evolve_radii(r0: np.ndarray, n_steps: int, dt: float, mode: str, substeps: i
     """
     if mode not in GROWTH_K:
         raise ValueError(f"unknown mode {mode!r}; expected one of {list(GROWTH_K)}")
-    K = GROWTH_K[mode]
+    K = GROWTH_K[mode] if k is None else np.asarray(k, dtype=float)
     r0 = np.asarray(r0, dtype=float)
     r = np.zeros((len(r0), n_steps))
     r[:, 0] = r0
@@ -180,3 +222,73 @@ def ripen_population(
             cur = cur * (v0 / v_alive) ** (1 / 3)
         r[:, i] = cur
     return np.arange(n_steps) * dt, r
+
+
+def coalesce(pos: np.ndarray, r0: np.ndarray):
+    """Volume-conserving merge-on-contact over a pre-generated set of walks.
+
+    Two particles touch when their centres are closer than ``r_i + r_j``. The
+    larger absorbs the smaller: ``r_new = (r_i^3 + r_j^3)^(1/3)`` (volume conserved
+    exactly) and the survivor's centre jumps to the volume-weighted centroid, which
+    is a real, visible displacement rather than a bookkeeping detail. The absorbed
+    particle is set to radius 0 for the rest of the clip — the same "0 = absent"
+    convention :func:`ripen_population` already uses — and its stored positions
+    past that frame are meaningless.
+
+    This is a *post-process on independent walks*, not a many-body simulation: the
+    survivor keeps its own trajectory (shifted by the centroid jump) instead of
+    both parents' momenta being combined. At the sizes and densities we generate,
+    the centroid jump is the part that shows up in a frame; a proper two-body
+    update would move the merged particle by a sub-pixel amount more. What this
+    buys is that the walk still comes from :func:`simulate_brownian`, so the box
+    reflection, the drift, and the ``MSD = 4Dt`` label all keep holding.
+
+    Because volume is conserved and nothing grows, total *area* strictly decreases
+    at every merge — ``(a + b)^(2/3) < a^(2/3) + b^(2/3)`` — so peak coverage is at
+    frame 0 and the caller can size particles against the coverage cap up front.
+
+    Parameters
+    ----------
+    pos : np.ndarray
+        Shape ``(N, T, 2)`` pre-generated trajectories.
+    r0 : np.ndarray
+        Shape ``(N,)`` initial radii in pixels.
+
+    Returns
+    -------
+    (pos, radii, events) : tuple[np.ndarray, np.ndarray, list[list[int]]]
+        ``pos`` ``(N, T, 2)`` with centroid jumps applied, ``radii`` ``(N, T)``
+        (0 = absorbed), and ``events`` as ``[frame, survivor, absorbed]`` rows in
+        chronological order — the exact merge times RQ2 grades lead-time against.
+    """
+    pos = np.array(pos, dtype=float, copy=True)
+    n, T, _ = pos.shape
+    cur = np.asarray(r0, dtype=float).copy()
+    radii = np.zeros((n, T))
+    events: list[list[int]] = []
+
+    for frame in range(T):
+        while True:  # cascade: a merge can bring the survivor into contact with a third
+            alive = np.flatnonzero(cur > 0)
+            hit = None
+            for a in range(len(alive)):
+                for b in range(a + 1, len(alive)):
+                    i, j = int(alive[a]), int(alive[b])
+                    if np.hypot(*(pos[i, frame] - pos[j, frame])) < cur[i] + cur[j]:
+                        hit = (i, j) if cur[i] >= cur[j] else (j, i)
+                        break
+                if hit:
+                    break
+            if not hit:
+                break
+            i, j = hit  # i survives (the larger), j is absorbed
+            vi, vj = cur[i] ** 3, cur[j] ** 3
+            # volume-weighted centroid: the survivor shifts toward what it ate, and
+            # keeps that offset for the rest of the clip
+            pos[i, frame:] += (vj / (vi + vj)) * (pos[j, frame] - pos[i, frame])
+            cur[i] = (vi + vj) ** (1 / 3)
+            cur[j] = 0.0
+            events.append([frame, i, j])
+        radii[:, frame] = cur
+
+    return pos, radii, events
