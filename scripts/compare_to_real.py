@@ -272,7 +272,7 @@ def containment_report(clip_files, real):
         centres = lambda _f, i, p=pos, r=rad: p[:, i, :][r[:, i] > 0]
         rows.append((apparent_radius_px(fr[:8], centres), temporal_delta(fr),
                      noise_ratio(fr)))
-    ours = np.array(rows)  # (n_clips, 3)
+    ours = np.array(rows)  # (n_clips, 3): per-clip, so no diff ever crosses a clip
     real_c = centre_crop(real)
     targets = [("apparent radius (px)", apparent_radius_px(real_c)),
                ("|dI|/mean", temporal_delta(real_c)),
@@ -289,7 +289,7 @@ def containment_report(clip_files, real):
     print(f"\n  {'CONTAINED' if ok else 'NOT CONTAINED'}: real experimental video "
           f"{'is' if ok else 'is NOT'} inside the generated distribution"
           f" ({len(clip_files)} clips).")
-    return ok
+    return ok, ours
 
 
 def centre_crop(frames, size=512):
@@ -356,23 +356,28 @@ def main() -> None:
     theirs = load_sequence("data/sam-em/ablationValidationSet.zip",
                            lambda x: "/jpeg_images/" in x and x.endswith(".jpg"))
     clips = sorted(glob.glob(str(args.out / "*.npz")))
-    # Pooled across clips for the statistics...
-    ours = np.concatenate([np.load(f)["frames"][:8].astype(float) for f in clips])
     fluxes = [float(np.load(f)["beam_flux"]) for f in clips]
-    # ...but ONE continuous clip for the animation. Concatenating clips makes the
-    # GIF cut between scenes every 8 frames, which reads as a rendering artefact.
+    # ONE continuous clip for the animation and the example frame. Concatenating
+    # clips makes the GIF cut between scenes every 8 frames, which reads as a
+    # rendering artefact.
     exp_clips = [f for f in clips if f.endswith("_experiment.npz")] or clips
     one_clip = np.load(exp_clips[0])["frames"].astype(float)
 
-    sources = [("REAL experimental", real), ("THEIRS (LPTEMsimulator)", theirs),
-               ("OURS", ours)]
-    print(f"{'source':26s} {'n':>4s} {'size':>12s} {'radius px':>10s} "
+    ok, per_clip = containment_report(clips, real)
+
+    # Summary row for OURS = per-clip medians from the containment rows. An
+    # earlier version measured a pooled frame stack, where "first 8 frames" was
+    # silently one arbitrary clip and frame-to-frame diffs crossed clip
+    # boundaries -- the panel the eye compared was not measuring its own title.
+    print(f"\n{'source':26s} {'n':>4s} {'size':>12s} {'radius px':>10s} "
           f"{'depth*':>7s} {'|dI|/mean':>11s}")
-    for name, fr in sources:
+    for name, fr in (("REAL experimental", real), ("THEIRS (LPTEMsimulator)", theirs)):
         print(f"{name:26s} {len(fr):4d} {str(fr.shape[1:]):>12s} "
               f"{apparent_radius_px(fr):10.1f} {particle_depth(fr):7.3f} "
               f"{temporal_delta(fr):11.3f}")
-    containment_report(clips, real)
+    print(f"{'OURS (per-clip median)':26s} {len(clips):4d} {'(512, 512)':>12s} "
+          f"{np.nanmedian(per_clip[:, 0]):10.1f} {'':>7s} "
+          f"{np.nanmedian(per_clip[:, 1]):11.3f}")
 
     print(f"\n  our clips span beam_flux {min(fluxes):.1f}-{max(fluxes):.1f}")
     print("  * depth is informational only: the real frames were contrast-stretched "
@@ -380,33 +385,37 @@ def main() -> None:
           "Apparent size and\n    frame-to-frame change survive that stretch and are "
           "the comparable numbers.")
 
+    # One frame from each experiment-grade clip: the stratum that exists to match
+    # real conditions, pooled across clips so the curve shows the distribution
+    # rather than one clip's flux draw.
+    ours_psd = np.stack([np.load(f)["frames"][j].astype(float)
+                         for f in exp_clips for j in (0, 24)])
+    sources = [("REAL experimental", real), ("THEIRS (LPTEMsimulator)", theirs),
+               ("OURS experiment-grade", ours_psd)]
+
     fig = plt.figure(figsize=(14, 8))
-    for i, (name, fr) in enumerate(sources):
-        ax = fig.add_subplot(2, 3, i + 1)
+    for i, (name, fr) in enumerate([("REAL experimental", real),
+                                    ("THEIRS (LPTEMsimulator)", theirs),
+                                    ("OURS experiment-grade", one_clip)]):
+        ax = fig.add_subplot(2, 2, i + 1)
         ax.imshow(fr[0], cmap="gray")
         ax.set_title(f"{name}\n{fr.shape[1]}x{fr.shape[2]}", fontsize=9)
         ax.axis("off")
 
-    ax = fig.add_subplot(2, 3, 4)
+    # The two histogram panels that used to sit here are gone, not fixed: their
+    # gated summaries (|dI|/mean, noise ratio) live in the containment table, and
+    # visually they showed mostly artefacts -- uint8 quantization beating against
+    # the bin width, and a mixture of doses against real's single dose. The PSD
+    # stays because it is the panel that has caught real bugs (the flat-background
+    # free lunch, the MTF calibration); its absolute level is still distorted by
+    # real's unknown contrast stretch, so it is diagnostic, never gated.
+    ax = fig.add_subplot(2, 2, 4)
     for name, fr in sources:
-        f, p = radial_psd(fr)
+        f, p = radial_psd(fr, k=len(fr))
         ax.loglog(f[1:], p[1:], label=name, lw=1.4)
     ax.set_xlabel("cycles / pixel"); ax.set_ylabel("power (I/mean)")
-    ax.set_title("Radial power spectrum", fontsize=10); ax.legend(fontsize=7)
-
-    ax = fig.add_subplot(2, 3, 5)
-    for name, fr in sources:
-        d = np.abs(np.diff(fr[:12], axis=0)).ravel() / fr.mean()
-        ax.hist(d, bins=60, range=(0, 1.2), histtype="step", density=True, label=name)
-    ax.set_xlabel("|I(t+1) - I(t)| / mean"); ax.set_ylabel("density")
-    ax.set_title("Frame-to-frame change", fontsize=10); ax.legend(fontsize=7)
-
-    ax = fig.add_subplot(2, 3, 6)
-    for name, fr in sources:
-        v = (fr[0] / fr[0].mean()).ravel()
-        ax.hist(v, bins=80, range=(0, 2.2), histtype="step", density=True, label=name)
-    ax.set_xlabel("I / mean"); ax.set_ylabel("density")
-    ax.set_title("Intensity distribution (stretch-normalised)", fontsize=10)
+    ax.set_title("Radial power spectrum (diagnostic; level distorted by real's "
+                 "contrast stretch)", fontsize=9)
     ax.legend(fontsize=7)
 
     plt.tight_layout()
