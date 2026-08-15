@@ -1,6 +1,7 @@
 import numpy as np
 
 from jepa_lptem.sim.render_bridge import (
+    calibrate_mtf,
     draw_spheres,
     render_frame,
     render_video,
@@ -201,6 +202,34 @@ def test_mtf_blurs_shot_noise_but_not_read_noise():
     img = render_frame(gold, mtf=mtf, read_noise=3.0, beam_flux=0.0,
                        rng=np.random.default_rng(0)) / CONVERSION_FACTOR
     assert abs(img.std() - 3.0) < 0.3, f"read noise was blurred: std={img.std():.2f}"
+
+
+def test_calibrate_mtf_reads_matrix_at_half_offsets():
+    """The detector calibration: output bin at offset u from DC = matrix at u/2.
+
+    Applied verbatim, the measured 512 px matrix attenuates each frequency at
+    twice the rate of the real 1024 px detector (temporal/spatial noise ratio
+    1.62-2.40 vs real's 1.284; at half-offsets, 1.27-1.31 -- containing real).
+    A radially known synthetic matrix makes the resampling exact to check.
+    """
+    n = 64
+    u = np.arange(n) - n // 2
+    dist = np.hypot(u[:, None], u[None, :])
+    mtf = 1.0 / (1.0 + dist)  # known radial profile, DC = 1
+    out = calibrate_mtf(mtf, n)
+    assert abs(out[n // 2, n // 2] - 1.0) < 1e-12          # DC preserved
+    got = out[n // 2, n // 2 + 20]                          # offset 20 from DC
+    assert abs(got - 1.0 / (1.0 + 10)) < 1e-6              # = matrix at offset 10
+
+
+def test_calibrate_mtf_resamples_to_other_render_sizes():
+    # Same cycles/px must get the same gain whatever the render size: offset 16
+    # on a 64 px grid and offset 8 on a 32 px grid are both 0.25 cycles/px.
+    n = 64
+    u = np.arange(n) - n // 2
+    mtf = 1.0 / (1.0 + np.hypot(u[:, None], u[None, :]))
+    big, small = calibrate_mtf(mtf, 64), calibrate_mtf(mtf, 32)
+    assert abs(big[32, 32 + 16] - small[16, 16 + 8]) < 1e-6
 
 
 def test_mtf_ringing_stays_negative():

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.fft import fft2, ifft2, fftshift, ifftshift
+from scipy.ndimage import map_coordinates
 
 # Inelastic mean free paths (nm) and defaults from the LPTEMsimulator notebook.
 IMFP_GOLD = 70.0
@@ -63,6 +64,42 @@ READ_NOISE = 0.3
 # background is a free lunch in the pretraining objective that does not exist in
 # real data.
 THICKNESS_SD_NM = 39.0
+
+# Frequency-axis calibration of the measured MTF matrix, applied by
+# :func:`calibrate_mtf`. The upstream ``MTFmatrix512.mat``, used verbatim on a
+# 512 px render at native detector pitch, attenuates each spatial frequency at
+# twice the rate of the real 1024 px detector -- our frames came out spatially
+# smoother than real at every dose, and the temporal/spatial noise ratio (the
+# stretch-invariant statistic the containment gate grades) read 1.62-2.40
+# against real's 1.284. Sampling the matrix at half its bin offsets -- i.e.
+# reading its frequency axis as 2x finer than a native-pitch render assumes --
+# gives 1.27-1.31, containing real. No MTF at all gives 1.00, confirming the
+# statistic reads pure detector blur, and fixed-pattern gain noise was measured
+# and ruled out (needs 8 % sd; real DEDs run 0.5-2 %).
+#
+# The calibration is *empirical*: the upstream repo documents nothing about the
+# matrix's frequency axis, so this constant is anchored to the measured noise
+# ratio of the real Au-nanorod video, not to a provenance story. It is the one
+# hardware number in the renderer -- a different camera means remeasuring it.
+MTF_FREQ_SCALE = 0.5
+
+
+def calibrate_mtf(mtf: np.ndarray, image_size: int,
+                  freq_scale: float = MTF_FREQ_SCALE) -> np.ndarray:
+    """Resample the measured MTF matrix onto an image's frequency grid.
+
+    ``mtf`` is fft-shifted (DC at centre). Output bin at offset ``u`` from DC --
+    frequency ``u / image_size`` cycles/px -- reads the matrix at offset
+    ``u * freq_scale * (len(mtf) / image_size)``, bilinear, edge-clamped. At
+    ``freq_scale = 1`` and matching sizes this is the identity; ``0.5`` is the
+    detector calibration (see :data:`MTF_FREQ_SCALE`). Also what lets a render
+    size other than the matrix's 512 use the measured curve at all.
+    """
+    n = len(mtf)
+    scale = freq_scale * n / image_size
+    idx = (np.arange(image_size) - image_size // 2) * scale + n // 2
+    yy, xx = np.meshgrid(idx, idx, indexing="ij")
+    return map_coordinates(mtf, [yy, xx], order=1, mode="nearest")
 
 
 def thickness_field(image_size, sd_nm: float = THICKNESS_SD_NM, n_modes: int = 3,

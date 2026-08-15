@@ -149,14 +149,18 @@ MSD_BIAS_FRACTION = 0.005
 #
 # Closed residual, kept because how it was closed is the useful part. Our frames
 # used to be spatially smoother than real -- temporal/spatial noise ratio pinned at
-# ~3 against real's 1.67, with the high-frequency spectrum ~10x low. Three rounds
-# blamed the measured 512 px MTF for over-blurring relative to real's 1024 px
-# detector, and JPEG was tested and ruled out (the ratio held at ~3 for every
-# quality from 100 down to 60). Neither was the cause: read noise was being added
-# *before* the MTF, so a dose-independent blur was eating a dose-dependent noise
-# term, which is why the ratio would not move with flux. The tell was there the
-# whole time -- a statistic that is flat across a 19x dose range is not a
-# resolution mismatch. `compare_to_real.noise_ratio` now computes it and the
+# ~3 against real's 1.284, with the high-frequency spectrum ~10x low. It took two
+# separate bugs to close, and each masked the other. First, read noise was being
+# added *before* the MTF, so a dose-independent blur was eating a dose-dependent
+# noise term -- that is what pinned the ratio flat across a 19x dose range (JPEG
+# was tested and ruled out: the ratio held at ~3 for every quality from 100 down
+# to 60). With the order fixed the ratio moved with flux again but still spanned
+# 1.62-2.40, real outside it: the 512 px MTF *was* also over-blurring relative to
+# the real 1024 px detector -- the hypothesis three rounds had blamed, then
+# dismissed when fixing the order seemed to explain everything. The matrix's
+# frequency axis is 2x finer than a native-pitch render assumes; see
+# render_bridge.MTF_FREQ_SCALE for the empirical calibration (1.27-1.31,
+# containing real). `compare_to_real.noise_ratio` computes the statistic and the
 # containment gate grades it, so it cannot silently reopen.
 #
 # The low-frequency half of the deficit was separate and also real: a flat

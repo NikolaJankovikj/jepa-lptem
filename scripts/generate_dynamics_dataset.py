@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 
 from jepa_lptem.sim.dataset import EXPERIMENT_EVERY, PROCESSES, build_clip
-from jepa_lptem.sim.render_bridge import render_video, to_uint8
+from jepa_lptem.sim.render_bridge import calibrate_mtf, render_video, to_uint8
 
 
 def main() -> None:
@@ -38,7 +38,7 @@ def main() -> None:
     ap.add_argument("--size", type=int, default=512)
     ap.add_argument("--processes", nargs="+", default=list(PROCESSES), choices=PROCESSES)
     ap.add_argument("--mtf", type=Path, default=Path("code/LPTEMsimulator/MTFmatrix512.mat"),
-                    help="MTF .mat; used only when --size matches its resolution")
+                    help="measured MTF .mat; resampled to --size at detector calibration")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -46,11 +46,12 @@ def main() -> None:
     mtf = None
     if args.mtf.exists():
         from scipy.io import loadmat
-        m = loadmat(str(args.mtf))["MTFmatrix"]
-        if m.shape == size:
-            mtf = m
-        else:
-            print(f"[warn] MTF is {m.shape} but size is {size}; rendering without MTF")
+        # calibrate_mtf resamples the measured matrix onto this render's frequency
+        # grid at the empirically anchored detector scale (see MTF_FREQ_SCALE) --
+        # applied verbatim, the matrix blurs 2x harder than the real detector.
+        mtf = calibrate_mtf(loadmat(str(args.mtf))["MTFmatrix"], args.size)
+    else:
+        print(f"[warn] {args.mtf} not found; rendering without MTF")
 
     args.out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)

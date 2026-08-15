@@ -172,7 +172,7 @@ Also added `MIN_VISIBLE_RADIUS_PX`: a particle too small to see is dropped from 
 
 Result — apparent radius **5.6 px** (real 6.1) and frame-to-frame change **0.347** (real 0.397) on the experiment stratum. Suite **69 passed**.
 
-**Known residual, not closed.** At matched temporal noise our frames are spatially *smoother* than real: the ratio of temporal to spatial noise is 3.16 for us at every flux versus 1.67 real, and our high-frequency power sits ~10× low. Pure shot noise fixes that ratio, so the difference is spatial correlation — most likely the measured 512 px MTF over-blurring relative to the real 1024 px detector. Ruled out: JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60). A static-texture term was implemented and **reverted** — it cannot move an Immerkær estimate, which is by construction insensitive to structure. Report as a Tier-2 bound; static structure is the least harmful gap for a video predictor, since it does not change between frames.
+**Known residual — closed later, in two stages (4h operator order, 4j MTF calibration).** At matched temporal noise our frames were spatially *smoother* than real: the ratio of temporal to spatial noise is 3.16 for us at every flux versus 1.67 real, and our high-frequency power sits ~10× low. Pure shot noise fixes that ratio, so the difference is spatial correlation — most likely the measured 512 px MTF over-blurring relative to the real 1024 px detector. Ruled out: JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60). A static-texture term was implemented and **reverted** — it cannot move an Immerkær estimate, which is by construction insensitive to structure. Report as a Tier-2 bound; static structure is the least harmful gap for a video predictor, since it does not change between frames.
 
 **Step 4d — two presentation bugs in the comparison, found by looking at the GIF.** Nikola spotted that our panel "changes scenes" and that our dark spots look much darker than real. Both were artefacts of `compare_to_real.py`, not of the data:
 - The GIF concatenated 8 frames from each of 10 clips, so it cut to a different clip every 8 frames. Now animates one continuous clip (experiment-grade by preference); the pooled statistics still use all clips.
@@ -286,6 +286,25 @@ graded, and the fourth was misdiagnosed for four commits because the symptom (sp
 noise too low) was measured but the mechanism was never traced. The Step-4 lesson was
 "validate the estimator against known ground truth"; the companion is **check that
 every label the dataset ships is graded by something**.
+
+**Step 4i — second logical review: three more defects the suite did not grade, plus the events process** (commit `852d93f`).
+
+1. **Size-distribution collapse.** The growth ODEs are contractions on r, so a population sharing one rate constant converges to a single radius (relative sd 0.095 → 0.0007 over a clip) — and the size *distribution* is the headline observable, so Gate 2's Wasserstein was degenerating to |Δmean| on half the dataset. Fix: per-particle rate constant pinned to r₀ at a common nucleation time (`R0_SPREAD`), which keeps rᵢ/rⱼ exactly constant and tightens the exponent label to ±0.001.
+2. **Flat background was a free lunch.** Our background was flat to 0.006 against real's 0.212 illumination swing. V-JEPA predicts masked spatiotemporal blocks, and a byte-identical background makes masked-background prediction free — a shortcut real data does not offer. `thickness_field` models the bulging cell; amplitude derived from sd(ln I) = sd(t)/IMFP_water, not fitted. Consequence: `beam_flux` floor 4 → 6.
+3. **Persistence was optimal on position by construction.** Brownian position is a martingale, so the generator handed the Gate-2 baseline an unbeatable strategy on the whole position axis. Coherent stage drift (measured ~7 % on real video; sampled U(0, 0.10) of the frame) is the one motion component a forecaster can get right; applied after the reflecting fold so the eval can remove it exactly.
+4. **`coalesce` restored properly**: volume-conserving merge-on-contact with exact merge times in the manifest — the only interacting process, and the only source of events; Step 12 previously had no data at all.
+
+**Step 4j — gate the noise ratio; it failed; the MTF frequency axis was the cause** (commits `debd700`, this one). The temporal/spatial noise ratio that justified the 4h MTF reorder existed only in a commit message. It is stretch-invariant (both terms are differences, so an affine stretch cancels), so it belongs in the containment gate — and once gated with one estimator on both sides it **failed**: ours 1.624–2.371, real 1.284. The reorder had fixed a real bug (a ratio flat across a 19× dose range cannot be a resolution mismatch) but the *other* hypothesis — the one dismissed in 4h — was also true: the measured 512 px matrix, applied verbatim, blurs every spatial frequency at **twice** the rate of the real 1024 px detector. Measured, not guessed: sampling the matrix at half its bin offsets gives 1.27–1.31 (contains real); no MTF gives 1.00; fixed-pattern gain noise ruled out (needs 8 % sd, real DEDs run 0.5–2 %). Fix: `calibrate_mtf` in `render_bridge` resamples the matrix onto the render's frequency grid at the empirically anchored `MTF_FREQ_SCALE = 0.5` — the one hardware calibration number in the renderer. Two lessons compound the 4h one: a statistic that justifies a physics change must live in graded code, not a commit message; and two bugs can share one symptom — fixing the first is not evidence the second was innocent.
+
+**Containment after the calibration (25-clip smoke, all three gated statistics):**
+
+| statistic | ours min | ours max | real | |
+|---|---|---|---|---|
+| apparent radius (px) | 4.0 | 11.0 | 6.0 | PASS |
+| \|dI\|/mean | 0.186 | 0.672 | 0.407 | PASS |
+| temporal/spatial noise | 1.267 | 1.326 | 1.284 | PASS |
+
+Physics round-trip on the recalibrated frames: GT exponents exact (0.333/0.500), matched position error 1.1–3.8 px, brightness-shortcut correlations negative on growth modes, saturation ≤ 0.01 %. Suite **90 passed**. **Step 4 is closed by its own 4g criterion: real experimental video is inside the generated distribution on every statistic that survives the contrast stretch.**
 
 **End of local phase.** At this point the entire evaluation + simulation core is coded and green on CPU. Decide the local side is ready → get PC access → Step 5.
 
