@@ -56,10 +56,11 @@ R0_SPREAD = 1.35
 # present would hand the evaluation a target that is not in the image.
 MIN_VISIBLE_RADIUS_PX = 2.0
 
-# Diffusion is set by how far a particle moves *relative to its own radius* per
-# frame, not by an absolute D. Real experimental video measures ~1.5 radii/frame
-# (apparent 10.6 px at 6.1 px radius, minus a 4.8 px centroid-jitter floor measured
-# on a frozen-particle control; coherent stage drift accounts for only 7 %).
+# Diffusion is set by a step-per-radius ratio at a *reference* radius, not by an
+# absolute D and not at each clip's own radius -- see R_REF_PX for why the latter
+# was wrong. Real experimental video measures ~1.5 radii/frame (apparent 10.6 px at
+# 6.1 px radius, minus a 4.8 px centroid-jitter floor measured on a frozen-particle
+# control; coherent stage drift accounts for only 7 %).
 #
 # This is not cosmetic. At the 0.3 radii/frame we had, persistence -- predict the
 # last position -- is already an excellent predictor, so the Gate-2 comparison
@@ -68,9 +69,18 @@ MIN_VISIBLE_RADIUS_PX = 2.0
 # ~10 px/frame a particle crosses 16 px patch boundaries constantly, which is a
 # different task from one drifting 2 px/frame.
 #
+# Once D falls as 1/r the large-radius end of the physics stratum lands back near
+# that slow regime (22 % of clips under 0.3 radii/frame). That is answered by
+# DRIFT_FRACTION rather than by raising the ratio: the reason slow motion hurt was
+# that persistence became optimal, and coherent drift removes that whatever the
+# Brownian step is. No clip has both a slow step and negligible drift.
+#
 # For a Rayleigh-distributed 2D step the mean magnitude is 1.772*sqrt(D), which
 # inverts to give D. D stays *constant within a clip* even while radii grow, so the
-# ground truth MSD = 4Dt remains exact -- that is what the evaluation grades.
+# ground truth MSD = 4Dt remains exact -- that is what the evaluation grades. So
+# Stokes-Einstein is applied *between* clips but not *within* one: a deliberate
+# trade of intra-clip realism for an exact label, since a growing particle whose D
+# tracked its radius would have no closed-form MSD to grade against.
 STEP_MEAN_PER_SQRT_D = 1.772
 
 # The real measurement is a single (radius, step) point: 1.55 radii/frame at an
@@ -137,14 +147,21 @@ MSD_BIAS_FRACTION = 0.005
 #               by construction -- its job is to put real imaging conditions
 #               *inside* the training distribution, not to measure anything.
 #
-# Known residual: at matched temporal noise our frames are spatially smoother
-# than real (ratio of temporal to spatial noise 3.16 for us, 1.67 real; our
-# high-frequency power spectrum sits ~10x low). Pure shot noise fixes that ratio,
-# so the difference is spatial correlation -- most likely the measured 512 px MTF
-# over-blurring relative to the real 1024 px detector. Not closed here; it is a
-# Tier-2 bound, and static structure is the least harmful kind of gap for a video
-# predictor since it does not change frame to frame. Ruled out as the cause:
-# JPEG compression (our ratio holds at ~3 for every quality from 100 down to 60).
+# Closed residual, kept because how it was closed is the useful part. Our frames
+# used to be spatially smoother than real -- temporal/spatial noise ratio pinned at
+# ~3 against real's 1.67, with the high-frequency spectrum ~10x low. Three rounds
+# blamed the measured 512 px MTF for over-blurring relative to real's 1024 px
+# detector, and JPEG was tested and ruled out (the ratio held at ~3 for every
+# quality from 100 down to 60). Neither was the cause: read noise was being added
+# *before* the MTF, so a dose-independent blur was eating a dose-dependent noise
+# term, which is why the ratio would not move with flux. The tell was there the
+# whole time -- a statistic that is flat across a 19x dose range is not a
+# resolution mismatch. `compare_to_real.noise_ratio` now computes it and the
+# containment gate grades it, so it cannot silently reopen.
+#
+# The low-frequency half of the deficit was separate and also real: a flat
+# background against real's 74 % illumination swing (see render_bridge
+# .thickness_field).
 #
 # Randomising over a range that brackets real data beats fitting a point estimate
 # of it: our picture of "real" is 75 frames of one Au-nanorod experiment, exported
@@ -263,8 +280,8 @@ def build_clip(process: str, n_frames: int, size: tuple[int, int],
     cfg = STRATA[stratum]
     h, w = size
     n = int(rng.integers(cfg["n"][0], cfg["n"][1] + 1))
-    # D from the step-to-radius ratio (see STEP_MEAN_PER_SQRT_D), using the clip's
-    # typical radius so motion is scaled to the particles that are actually drawn.
+    # Step-per-radius at R_REF_PX, not at this clip's own radius -- D is derived
+    # from it further down and falls off as 1/r from that anchor (see R_REF_PX).
     step_ratio = float(rng.uniform(*cfg["step_per_radius"]))
     t0_growth, dt_growth = 0.0, 1.0
     if process == "coalescence":

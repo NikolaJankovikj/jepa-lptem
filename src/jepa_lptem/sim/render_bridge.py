@@ -187,8 +187,11 @@ def render_frame(
     that arrived, and the readout electronics add their noise downstream of it.
     Blurring the read noise too (the order this used to have) strips high-frequency
     power that a real detector keeps, and it does so by a factor independent of dose:
-    the ratio of temporal to spatial noise sat at 2.9 at every flux, against 1.67
-    measured on real video. In this order it is 1.3-1.5 and moves with flux.
+    the ratio of temporal to spatial noise sat flat across a 19x dose range, which is
+    what gave the bug away -- a resolution mismatch would not behave like that. In
+    this order the ratio moves with flux again. The number itself lives in
+    ``compare_to_real.noise_ratio`` and is graded by the containment gate; quoting it
+    here too is how this docstring and PLAN.md previously ended up disagreeing.
 
     Parameters
     ----------
@@ -316,10 +319,13 @@ def to_uint8(img: np.ndarray, **background_kwargs) -> np.ndarray:
     Dividing by the known background instead gives transmittance (1.0 = clean
     water) on one fixed scale for the whole dataset, independent of dose. Values
     above 1.0 are noise excursions, so ``BACKGROUND_LEVEL`` sits at 64 rather than
-    mid-range: 4x headroom keeps clipping under 1 % even at the lowest dose we
-    generate (~0.4 electrons per pixel), where the raw frame is nearly binary
-    before the MTF averages it. The coarser scale costs nothing -- one quantization
-    step stays far below the shot noise at every flux in ``BEAM_FLUX_RANGE``.
+    mid-range: 4x headroom keeps clipping low even at the lowest dose we generate --
+    beam flux 6.0, i.e. ~1.3 electrons per pixel of background, where the raw frame
+    is nearly binary before the MTF averages it. That floor has moved twice (2.0 ->
+    4.0 once the read noise stopped being blurred away, 4.0 -> 6.0 once the
+    thickness field started darkening thick regions), so the authority is
+    ``dataset.STRATA``, not this sentence. The coarser scale costs nothing -- one
+    quantization step stays far below the shot noise at every flux we generate.
     """
     background = background_intensity(**background_kwargs)
     scaled = np.asarray(img, dtype=float) / background * BACKGROUND_LEVEL

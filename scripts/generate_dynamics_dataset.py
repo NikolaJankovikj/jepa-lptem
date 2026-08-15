@@ -58,11 +58,20 @@ def main() -> None:
     with manifest.open("w") as mf:
         for i in range(args.n_videos):
             process = args.processes[i % len(args.processes)]
-            # Cycle the stratum over *rounds* of processes, not over clips: with 5
-            # processes and EXPERIMENT_EVERY = 5, `i % EXPERIMENT_EVERY` locks the
-            # experiment stratum onto one single process forever.
+            # Walk the experiment stratum diagonally across the (round, process)
+            # grid. Two failed versions are why this is not a one-liner:
+            # `i % EXPERIMENT_EVERY` is in lockstep with `i % len(processes)` when
+            # those are equal (they both are, at 5), so it locks the experiment
+            # stratum onto one single process forever; cycling on rounds instead
+            # unlocks the process but puts the first experiment clip at index 20, so
+            # a short smoke run gets *none* -- and containment is checked on smoke
+            # runs, against the one stratum that exists to bracket real data.
+            # The diagonal gives 1-in-EXPERIMENT_EVERY from the first round and
+            # reaches every process for any process count, since each one takes its
+            # turn at `round == -proc (mod EXPERIMENT_EVERY)`.
+            proc_idx, round_ = i % len(args.processes), i // len(args.processes)
             stratum = ("experiment"
-                       if (i // len(args.processes)) % EXPERIMENT_EVERY == EXPERIMENT_EVERY - 1
+                       if (round_ + proc_idx) % EXPERIMENT_EVERY == 0
                        else "physics")
             positions_t, radii_t, meta, pos, radii = build_clip(
                 process, args.n_frames, size, rng, stratum=stratum)

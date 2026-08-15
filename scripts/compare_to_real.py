@@ -162,6 +162,35 @@ def temporal_delta(frames):
     return float(np.abs(np.diff(frames, axis=0)).mean() / frames.mean())
 
 
+def noise_ratio(frames, k=8):
+    """Temporal noise over spatial noise -- the statistic that drove the MTF reorder.
+
+    Stretch-invariant, and for a stronger reason than the other two: both terms are
+    *differences*, so an affine stretch ``I -> aI + b`` scales each by ``a`` and
+    cancels in the ratio. That is what earns it a place in the containment gate
+    rather than the informational column.
+
+    It was also the residual four commits failed to close by blaming the MTF's
+    resolution. The cause was operator order: read noise added *before* the MTF is
+    a dose-independent blur eating a dose-dependent noise term, which pinned this
+    ratio flat across a 19x dose range -- the signature of the bug. With the read
+    noise added after the blur it moves with dose again.
+
+    Until now the number lived only in a commit message, which is exactly how a
+    claim that justifies a physics change goes unchecked. Spatial noise uses the
+    Immerkaer second-derivative kernel: structure-insensitive by construction, so
+    particles and the illumination gradient do not inflate it.
+    """
+    fr = np.asarray(frames, dtype=float)[:k]
+    if len(fr) < 2:
+        return float("nan")
+    temporal = float(np.diff(fr, axis=0).std() / np.sqrt(2))
+    kern = np.array([[1., -2., 1.], [-2., 4., -2.], [1., -2., 1.]])
+    spatial = float(np.median([np.abs(ndimage.convolve(f, kern)).mean()
+                               * np.sqrt(np.pi / 2) / 6 for f in fr]))
+    return temporal / max(spatial, 1e-9)
+
+
 def matched_filter(frame, radius):
     """Correlate with a disk of the expected radius, in units of the noise sigma.
 
@@ -228,7 +257,7 @@ def containment_report(clip_files, real):
     and it is falsifiable: for each statistic that survives an unknown stretch,
     real must lie between our min and our max.
 
-    Only two statistics qualify. Absolute contrast does not survive the stretch
+    Three statistics qualify. Absolute contrast does not survive the stretch
     (see :func:`particle_depth`), so it is reported but never gated on.
 
     Our side measures from ground-truth centres, since we have them; real has no
@@ -241,11 +270,13 @@ def containment_report(clip_files, real):
         fr = z["frames"].astype(float)
         pos, rad = z["positions"], z["radii"]
         centres = lambda _f, i, p=pos, r=rad: p[:, i, :][r[:, i] > 0]
-        rows.append((apparent_radius_px(fr[:8], centres), temporal_delta(fr)))
-    ours = np.array(rows)  # (n_clips, 2)
+        rows.append((apparent_radius_px(fr[:8], centres), temporal_delta(fr),
+                     noise_ratio(fr)))
+    ours = np.array(rows)  # (n_clips, 3)
     real_c = centre_crop(real)
     targets = [("apparent radius (px)", apparent_radius_px(real_c)),
-               ("|dI|/mean", temporal_delta(real_c))]
+               ("|dI|/mean", temporal_delta(real_c)),
+               ("temporal/spatial noise", noise_ratio(real_c))]
 
     print(f"\n{'statistic':22s} {'ours min':>9s} {'ours max':>9s} {'real':>8s}")
     ok = True
