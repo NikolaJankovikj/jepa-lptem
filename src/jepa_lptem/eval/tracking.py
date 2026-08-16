@@ -82,6 +82,16 @@ def link_tracks(
     -------
     LinkResult
         Full-length tracks plus coverage bookkeeping.
+
+    Notes
+    -----
+    Linking is adaptive: when a dense cluster of detections makes the assignment
+    subnet combinatorially intractable at ``max_dist``, trackpy halves the search
+    range for that subnet (down to 2 px) instead of raising
+    ``SubnetOversizeException``. A half-trained centroid probe emits exactly such
+    clusters of false positives, and one bad window must not kill a batch
+    evaluation. If even 2 px cannot resolve it, the exception still propagates --
+    callers grading many windows should catch it and report the skip.
     """
     T = len(frames)
     rows = []
@@ -94,7 +104,8 @@ def link_tracks(
         return LinkResult(np.zeros((0, T, 2)), 0.0, 0, 0)
 
     df = pd.DataFrame(rows)
-    linked = tp.link(df, search_range=max_dist, memory=memory)
+    linked = tp.link(df, search_range=max_dist, memory=memory,
+                     adaptive_stop=2.0, adaptive_step=0.5)
 
     n_particles = int(linked["particle"].nunique())
     full = []

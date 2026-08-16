@@ -45,3 +45,16 @@ def test_linking_reports_dropout_coverage():
     assert res.n_particles == 3
     assert res.n_full == 2
     assert abs(res.coverage - 2 / 3) < 1e-9
+
+
+def test_linking_survives_dense_false_positive_cluster():
+    # A half-trained centroid probe can emit a wall of detections in one spot.
+    # At a large search_range that used to raise SubnetOversizeException and
+    # kill the whole evaluation batch; adaptive linking must degrade instead.
+    import numpy as np
+    from jepa_lptem.eval.tracking import link_tracks
+
+    rng = np.random.default_rng(0)
+    frames = [rng.uniform(0, 30, (60, 2)) for _ in range(3)]  # dense 30px cluster
+    result = link_tracks(frames, max_dist=48.0)
+    assert result.n_particles > 0  # linked something, raised nothing

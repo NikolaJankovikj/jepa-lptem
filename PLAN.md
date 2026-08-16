@@ -329,19 +329,21 @@ Physics round-trip on the recalibrated frames: GT exponents exact (0.333/0.500),
 
 ## Step 6 — Feature extraction + cache
 
-**Where:** remote (GPU). **Files:** `scripts/extract_features.py`, `tests/test_feature_shapes.py`
+**Where:** code + smoke local (built *before* Step 5, so PC time is pure batch execution); full extraction remote (GPU). **Files:** `scripts/extract_features.py`, `tests/test_feature_shapes.py`
 
-- [ ] GPU smoke test (`@pytest.mark.gpu`): load `facebook/vjepa2-vitl-fpc64-256`, feed 64 random frames at 256², assert `last_hidden_state.shape == (1, 32*16*16, 1024)` (64 frames / tubelet 2 = 32 latent frames × 16×16 patches × dim 1024).
-- [ ] Implement `scripts/extract_features.py`: center-crop/resize to 256², window each 100-frame video into 64-frame clips (**stride 36 → exactly 2 windows/video, frames 0–63 and 36–99**, covering late-time growth for exponent fits), save `last_hidden_state` reshaped `(32, 256, 1024)` as fp16 `.npy` (~17 MB each). **Budget: ~4,000 clips ≈ 68 GB** for dynamics-v1, plus SAM-EM holdout + experimental. bf16 inference, both GPUs via `CUDA_VISIBLE_DEVICES` split.
-- [ ] Run extraction on dynamics-v1 + SAM-EM holdout + experimental clips (a few hours, tmux, can overlap with the dataset-generation tail).
-- [ ] Commit script.
+- [x] GPU smoke test (`@pytest.mark.gpu`): load `facebook/vjepa2-vitl-fpc64-256`, feed 64 random frames at 256², assert `last_hidden_state.shape == (1, 32*16*16, 1024)` (64 frames / tubelet 2 = 32 latent frames × 16×16 patches × dim 1024). Written; runs on the remote via `-m gpu`. The pure alignment logic (`window_starts`, `crop_and_align_gt`) is tested locally.
+- [x] Implement `scripts/extract_features.py`: center-**crop** to 256² (crop, never resize — Step 4g), window each 100-frame video into 64-frame clips (**stride 36 → exactly 2 windows/video, frames 0–63 and 36–99**, covering late-time growth for exponent fits), save `last_hidden_state` reshaped `(32, 256, 1024)` as fp16 in a per-window `.npz` **together with the ground truth aligned to latent frames** (positions shifted to crop coordinates; a particle whose centre leaves the crop gets radius 0, same convention as the visibility floor; GT sampled at the even frame of each tubelet pair, `frames_per_latent` shipped in the meta). **Budget: ~4,000 clips ≈ 68 GB** for dynamics-v1, plus SAM-EM holdout + experimental. Devices auto (cuda/mps/cpu); both GPUs via `CUDA_VISIBLE_DEVICES` split.
+- [x] **Local smoke:** extraction runs end-to-end on `smoke_v3` (25 clips, `--window 48`) on MPS.
+- [ ] Run extraction on dynamics-v1 + SAM-EM holdout + experimental clips (remote; a few hours, tmux, can overlap with the dataset-generation tail).
+- [x] Commit script.
 
 ## Step 7 — GATE 1: probe frozen features
 
-**Where:** probe training remote (~30 min/probe on one 3090), analysis local. **Files:** `scripts/train_probes.py`, `experiments/gate1/`
+**Where:** code + smoke local (built *before* Step 5); real probe training remote (~30 min/probe on one 3090), analysis local. **Files:** `scripts/train_probes.py`, `tests/test_train_probes.py`, `experiments/gate1/`
 
-- [ ] Implement `scripts/train_probes.py`: per-latent-frame tokens `(256, 1024)` → `AttentiveProbe` for `[count, mean_radius, total_area]` (targets from `gt.npz`) and `CentroidProbe` for occupancy+offsets (Gaussian splats + offset targets at GT centroids). Split 80/10/10 **by video**.
-- [ ] Run on frozen features; rsync metrics back; analyze locally.
+- [x] Implement `scripts/train_probes.py`: per-latent-frame tokens `(256, 1024)` → `AttentiveProbe` for `[count, mean_radius, total_area]` (z-scored on train stats) and `CentroidProbe` for occupancy+offsets (targets built as the exact inverse of `decode_centroids` — round-trip tested; cell collisions counted, not silently dropped; BCE pos-weighted for the ~5 % occupancy). Split 80/10/10 **by source clip**. One training sample = one window (all latent frames as a batch), loaded lazily — the ~70 GB remote cache never sits in RAM. Evaluation: R² per observable (overall + physics stratum) and the full decode → trackpy → MSD pipeline, pooled across windows with n_full weights (per-window MSD is noise — Step 4e), drift removed exactly, lags capped by `msd_max_lag`. Writes `probes.pt` + `metrics.json`.
+- [x] **Local smoke:** trains end-to-end on the smoke cache; machinery verified (R² numbers from 25 clips are not the gate).
+- [ ] Run on frozen features of the full set (remote); rsync metrics back; analyze locally.
 - [ ] **Decide the gate:**
   - **PASS** (held-out R² ≥ 0.8 for mean radius and count at mid SNR; MSD from decoded tracks within 20% of GT MSD, with track-coverage reported): frozen encoder suffices → **LoRA (Step 8) shrinks to a single comparison run.**
   - **FAIL:** Step 8 becomes the main path.

@@ -1,0 +1,61 @@
+{
+  "n_windows": 25,
+  "epochs": 50,
+  "split": {
+    "train": [
+      "clip_0000_ripening_experiment",
+      "clip_0001_diffusion_physics",
+      "clip_0002_reaction_physics",
+      "clip_0003_static_physics",
+      "clip_0005_ripening_physics",
+      "clip_0006_diffusion_physics",
+      "clip_0007_reaction_physics",
+      "clip_0008_static_physics",
+      "clip_0009_coalescence_experiment",
+      "clip_0012_reaction_physics",
+      "clip_0013_static_experiment",
+      "clip_0014_coalescence_physics",
+      "clip_0015_ripening_physics",
+      "clip_0016_diffusion_physics",
+      "clip_0017_reaction_experiment",
+      "clip_0018_static_physics",
+      "clip_0020_ripening_physics",
+      "clip_0021_diffusion_experiment",
+      "clip_0022_reaction_physics",
+      "clip_0023_static_physics",
+      "clip_0024_coalescence_physics"
+    ],
+    "val": [
+      "clip_0004_coalescence_physics",
+      "clip_0019_coalescence_physics"
+    ],
+    "test": [
+      "clip_0010_ripening_physics",
+      "clip_0011_diffusion_physics"
+    ]
+  },
+  "val": {
+    "r2_count": -1.5371683705353014,
+    "r2_count_physics": -1.5371683705353014,
+    "r2_mean_radius": -2.9817005102775394,
+    "r2_mean_radius_physics": -2.9817005102775394,
+    "r2_total_area": -0.5006335124590569,
+    "r2_total_area_physics": -0.5006335124590569,
+    "msd_ratio_pooled": NaN,
+    "msd_windows_used": 0,
+    "msd_windows_unlinkable": 0,
+    "track_coverage_mean": 0.00273224043715847
+  },
+  "test": {
+    "r2_count": -6.615567651027563,
+    "r2_count_physics": -6.615567651027563,
+    "r2_mean_radius": 0.6389583828524023,
+    "r2_mean_radius_physics": 0.6389583828524023,
+    "r2_total_area": -0.06195215269731036,
+    "r2_total_area_physics": -0.06195215269731036,
+    "msd_ratio_pooled": NaN,
+    "msd_windows_used": 0,
+    "msd_windows_unlinkable": 0,
+    "track_coverage_mean": 0.0
+  }
+}
