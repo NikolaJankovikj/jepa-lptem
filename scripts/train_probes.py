@@ -22,11 +22,15 @@ leaks between splits): R^2 per observable (overall + physics stratum), and the
 full centroid -> trackpy -> MSD pipeline pooled across windows -- per-window MSD
 at these particle counts is noise (Step 4e), so windows pool with n_full
 weights, drift removed exactly, lags capped by each clip's ``msd_max_lag``.
+The occupancy threshold is picked on val (max detection F1) and applied to
+test; the same MSD pipeline also runs on ground-truth centroids, giving the
+perfect-probe ceiling the probe's MSD and coverage are read against.
 
 Usage (local smoke; remote is the same command on the full cache):
     uv run python scripts/train_probes.py --features data/features/smoke_v3 \
         --out experiments/gate1-smoke --epochs 50
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,15 +40,14 @@ from pathlib import Path
 
 import numpy as np
 
-from jepa_lptem.eval.observables import compute_msd
-from jepa_lptem.eval.probes import AttentiveProbe, CentroidProbe, decode_centroids
-from jepa_lptem.eval.tracking import link_tracks
+from jepa_lptem.eval.centroid_eval import GRID, eval_centroid_msd, pick_threshold
+from jepa_lptem.eval.probes import AttentiveProbe, CentroidProbe
 
-GRID = 16
 OBS_NAMES = ("count", "mean_radius", "total_area")
 
 
 # --------------------------- targets (pure numpy) -----------------------------
+
 
 def attentive_targets(radii: np.ndarray) -> np.ndarray:
     """(N, T_lat) radii -> (T_lat, 3) [count, mean_radius, total_area]; 0 = absent."""
@@ -52,7 +55,7 @@ def attentive_targets(radii: np.ndarray) -> np.ndarray:
     count = present.sum(axis=0).astype(float)
     with np.errstate(invalid="ignore"):
         mean_r = np.where(count > 0, radii.sum(axis=0) / np.maximum(count, 1), 0.0)
-    area = np.pi * (radii ** 2).sum(axis=0)
+    area = np.pi * (radii**2).sum(axis=0)
     return np.stack([count, mean_r, area], axis=1)
 
 
@@ -91,7 +94,7 @@ def split_by_clip(clip_names: list[str], seed: int = 0):
     n_val = max(1, len(clips) // 10)
     n_test = max(1, len(clips) // 10)
     val = {clips[i] for i in order[:n_val]}
-    test = {clips[i] for i in order[n_val:n_val + n_test]}
+    test = {clips[i] for i in order[n_val : n_val + n_test]}
     train = set(clips) - val - test
     return {"train": train, "val": val, "test": test}
 
@@ -103,6 +106,7 @@ def r_squared(pred: np.ndarray, true: np.ndarray) -> float:
 
 
 # ------------------------------- lazy windows ---------------------------------
+
 
 class WindowCache:
     """Lazy view over the Step-6 cache: meta in memory, features on demand."""
@@ -118,11 +122,16 @@ class WindowCache:
 
     def load(self, i: int):
         with np.load(self.files[i]) as z:
-            return (z["features"].astype(np.float32), z["positions"], z["radii"],
-                    self.meta[i])
+            return (
+                z["features"].astype(np.float32),
+                z["positions"],
+                z["radii"],
+                self.meta[i],
+            )
 
 
 # --------------------------------- training -----------------------------------
+
 
 def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
     import torch
@@ -131,11 +140,15 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
     # Target statistics + BCE pos-weight from the train split only.
     t_all = np.concatenate([attentive_targets(cache.load(i)[2]) for i in idx_train])
     mu, sd = t_all.mean(axis=0), t_all.std(axis=0) + 1e-9
-    occ_frac = np.mean([centroid_targets(cache.load(i)[1], cache.load(i)[2],
-                                         cache.meta[i]["crop"])[0].mean()
-                        for i in idx_train[:4]])
-    pos_weight = torch.tensor((1.0 - occ_frac) / max(occ_frac, 1e-4),
-                              dtype=torch.float32, device=device)
+    occ_frac = np.mean([
+        centroid_targets(cache.load(i)[1], cache.load(i)[2], cache.meta[i]["crop"])[
+            0
+        ].mean()
+        for i in idx_train[:4]
+    ])
+    pos_weight = torch.tensor(
+        (1.0 - occ_frac) / max(occ_frac, 1e-4), dtype=torch.float32, device=device
+    )
 
     att = AttentiveProbe(out_dim=3).to(device)
     cen = CentroidProbe(grid=GRID).to(device)
@@ -144,25 +157,30 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
 
     rng = np.random.default_rng(seed)
     for ep in range(epochs):
-        att.train(); cen.train()
+        att.train()
+        cen.train()
         losses = []
         for i in rng.permutation(idx_train):
             feats, pos, rad, meta = cache.load(int(i))
             occ_t, off_t, _ = centroid_targets(pos, rad, meta["crop"])
-            x = torch.from_numpy(feats).to(device)                    # (T, 256, D)
-            y = torch.from_numpy(((attentive_targets(rad) - mu) / sd)
-                                 .astype(np.float32)).to(device)
+            x = torch.from_numpy(feats).to(device)  # (T, 256, D)
+            y = torch.from_numpy(
+                ((attentive_targets(rad) - mu) / sd).astype(np.float32)
+            ).to(device)
             occ_y = torch.from_numpy(occ_t).to(device)
             off_y = torch.from_numpy(off_t).to(device)
 
             pred = att(x)
             occ_p, off_p = cen(x)
             mask = occ_y.unsqueeze(-1)
-            loss = (torch.nn.functional.mse_loss(pred, y)
-                    + bce(occ_p, occ_y)
-                    + ((off_p - off_y) ** 2 * mask).sum()
-                    / mask.sum().clamp(min=1.0))
-            opt.zero_grad(); loss.backward(); opt.step()
+            loss = (
+                torch.nn.functional.mse_loss(pred, y)
+                + bce(occ_p, occ_y)
+                + ((off_p - off_y) ** 2 * mask).sum() / mask.sum().clamp(min=1.0)
+            )
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
             losses.append(loss.item())
         if (ep + 1) % max(1, epochs // 10) == 0:
             print(f"  epoch {ep + 1:3d}/{epochs}  train loss {np.mean(losses):.4f}")
@@ -171,8 +189,10 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
 
 # -------------------------------- evaluation ----------------------------------
 
+
 def eval_attentive(att, cache, idx, norm, device):
     import torch
+
     mu, sd = norm
     preds, trues, strata = [], [], []
     att.eval()
@@ -189,52 +209,21 @@ def eval_attentive(att, cache, idx, norm, device):
     for j, name in enumerate(OBS_NAMES):
         out[f"r2_{name}"] = r_squared(preds[:, j], trues[:, j])
         if is_phys.any():
-            out[f"r2_{name}_physics"] = r_squared(preds[is_phys, j],
-                                                  trues[is_phys, j])
+            out[f"r2_{name}_physics"] = r_squared(preds[is_phys, j], trues[is_phys, j])
     return out
 
 
-def eval_centroid_msd(cen, cache, idx, device):
-    """Decode -> link -> pooled MSD/4Dt ratio, exactly as Gate 2 will consume it."""
+def probe_windows(cen, cache, idx, device):
+    """Yield ``(occ_prob (T,G,G), offsets (T,G,G,2), GT centroids per frame, meta)``."""
     import torch
-    from trackpy.linking.utils import SubnetOversizeException
+
     cen.eval()
-    ratios, weights, coverages = [], [], []
-    n_unlinkable = 0
     for i in idx:
-        feats, _, _, meta = cache.load(i)
-        cell = meta["crop"] / GRID
+        feats, pos, rad, meta = cache.load(i)
         with torch.no_grad():
             occ, off = cen(torch.from_numpy(feats).to(device))
-        occ = torch.sigmoid(occ).cpu().numpy()
-        off = off.cpu().numpy()
-        frames = [decode_centroids(occ[t], off[t], cell_size=cell)
-                  for t in range(len(occ))]
-        dt = meta["frames_per_latent"]
-        step = 1.772 * np.sqrt(meta["D"] * dt) + dt * np.hypot(*meta["drift"])
-        try:
-            link = link_tracks(frames, max_dist=max(8.0, 3.0 * step))
-        except SubnetOversizeException:
-            # even adaptive linking gave up: the probe emitted a wall of false
-            # positives on this window -- skip it, but never silently
-            n_unlinkable += 1
-            continue
-        coverages.append(link.coverage)
-        if link.n_full < 2:
-            continue
-        tracks = link.tracks.copy()
-        drift = np.asarray(meta["drift"]) * dt
-        tracks -= drift[None, None, :] * np.arange(tracks.shape[1])[None, :, None]
-        msd = compute_msd(tracks)
-        max_lag = max(2, min(len(msd), int(meta["msd_max_lag"] / dt)))
-        lags = np.arange(1, max_lag + 1)
-        ratios.append(float(np.mean(msd[:max_lag] / (4 * meta["D"] * dt * lags))))
-        weights.append(link.n_full)
-    pooled = (float(np.average(ratios, weights=weights)) if ratios else float("nan"))
-    return {"msd_ratio_pooled": pooled,
-            "msd_windows_used": len(ratios),
-            "msd_windows_unlinkable": n_unlinkable,
-            "track_coverage_mean": float(np.mean(coverages)) if coverages else 0.0}
+        gt = [pos[rad[:, t] > 0, t] for t in range(rad.shape[1])]
+        yield torch.sigmoid(occ).cpu().numpy(), off.cpu().numpy(), gt, meta
 
 
 def main() -> None:
@@ -246,40 +235,63 @@ def main() -> None:
     args = ap.parse_args()
 
     import torch
-    device = ("cuda" if torch.cuda.is_available()
-              else "mps" if torch.backends.mps.is_available() else "cpu")
+
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
 
     cache = WindowCache(args.features)
     clip_of = [m["clip"] for m in cache.meta]
     split = split_by_clip(clip_of, seed=args.seed)
-    idx = {k: [i for i, c in enumerate(clip_of) if c in v]
-           for k, v in split.items()}
-    n_coll = sum(centroid_targets(cache.load(i)[1], cache.load(i)[2],
-                                  cache.meta[i]["crop"])[2] for i in idx["train"])
-    print(f"windows: {len(cache.files)}  split "
-          f"{len(idx['train'])}/{len(idx['val'])}/{len(idx['test'])} "
-          f"(by clip)  cell collisions in train targets: {n_coll}  device: {device}")
+    idx = {k: [i for i, c in enumerate(clip_of) if c in v] for k, v in split.items()}
+    n_coll = sum(
+        centroid_targets(cache.load(i)[1], cache.load(i)[2], cache.meta[i]["crop"])[2]
+        for i in idx["train"]
+    )
+    print(
+        f"windows: {len(cache.files)}  split "
+        f"{len(idx['train'])}/{len(idx['val'])}/{len(idx['test'])} "
+        f"(by clip)  cell collisions in train targets: {n_coll}  device: {device}"
+    )
 
-    att, cen, norm = train_probes(cache, idx["train"], device,
-                                  args.epochs, seed=args.seed)
+    att, cen, norm = train_probes(
+        cache, idx["train"], device, args.epochs, seed=args.seed
+    )
 
-    metrics = {"n_windows": len(cache.files), "epochs": args.epochs,
-               "split": {k: sorted(v) for k, v in split.items()}}
+    metrics = {
+        "n_windows": len(cache.files),
+        "epochs": args.epochs,
+        "split": {k: sorted(v) for k, v in split.items()},
+    }
+    threshold = pick_threshold(probe_windows(cen, cache, idx["val"], device))
     for part in ("val", "test"):
         m = eval_attentive(att, cache, idx[part], norm, device)
-        m.update(eval_centroid_msd(cen, cache, idx[part], device))
+        m.update(
+            eval_centroid_msd(probe_windows(cen, cache, idx[part], device), threshold)
+        )
         metrics[part] = m
-        print(f"\n[{part}] " + "  ".join(
-            f"{k}={v:.3f}" for k, v in m.items() if isinstance(v, float)))
+        print(
+            f"\n[{part}] "
+            + "  ".join(f"{k}={v:.3f}" for k, v in m.items() if isinstance(v, float))
+        )
 
     args.out.mkdir(parents=True, exist_ok=True)
-    torch.save({"attentive": att.state_dict(), "centroid": cen.state_dict(),
-                "norm": norm}, args.out / "probes.pt")
+    torch.save(
+        {"attentive": att.state_dict(), "centroid": cen.state_dict(), "norm": norm},
+        args.out / "probes.pt",
+    )
     (args.out / "metrics.json").write_text(json.dumps(metrics, indent=2))
     print(f"\nwrote {args.out}/probes.pt and metrics.json")
-    print("Gate 1 criteria (judge on the full remote run, not the smoke): "
-          "r2_mean_radius_physics >= 0.8, r2_count_physics >= 0.8, "
-          "msd_ratio_pooled in [0.8, 1.2] with coverage reported.")
+    print(
+        "Gate 1 criteria (judge on the full remote run, not the smoke): "
+        "r2_mean_radius_physics >= 0.8, r2_count_physics >= 0.8, "
+        "msd_ratio_pooled in [0.8, 1.2], read against msd_ratio_pooled_gt "
+        "(the perfect-probe ceiling on this crop) with coverage reported."
+    )
 
 
 if __name__ == "__main__":

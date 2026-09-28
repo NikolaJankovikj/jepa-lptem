@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from train_probes import (GRID, attentive_targets, centroid_targets, r_squared,
                           split_by_clip)
 
+from jepa_lptem.eval.centroid_eval import match_count, pick_threshold, pool_msd, window_msd
+
 from jepa_lptem.eval.probes import decode_centroids
 
 
@@ -57,3 +59,46 @@ def test_r_squared_perfect_and_mean_predictor():
     y = np.array([1.0, 2.0, 3.0, 4.0])
     assert r_squared(y, y) == 1.0
     assert abs(r_squared(np.full(4, y.mean()), y)) < 1e-12
+
+
+def test_match_count_is_one_to_one_within_tolerance():
+    gt = np.array([[10.0, 10.0], [50.0, 50.0]])
+    pred = np.array([[11.0, 10.0], [12.0, 10.0], [50.0, 70.0]])
+    # two detections near the first particle claim it once; the third is too far
+    assert match_count(pred, gt, tol=8.0) == 1
+    assert match_count(np.zeros((0, 2)), gt, tol=8.0) == 0
+
+
+def test_pick_threshold_cuts_between_true_and_spurious_peaks():
+    occ = np.zeros((1, GRID, GRID))
+    occ[0, 3, 3] = 0.92          # the real particle
+    occ[0, 10, 10] = 0.62        # a spurious peak far from anything
+    gt = [np.array([[3.5 * 16, 3.5 * 16]])]
+    windows = [(occ, np.zeros((1, GRID, GRID, 2)), gt, {"crop": 256})]
+    th = pick_threshold(windows)
+    assert 0.62 <= th < 0.92
+
+
+def test_window_msd_recovers_4dt_on_ground_truth_tracks():
+    from jepa_lptem.sim.dynamics import simulate_brownian
+    D = 0.5
+    rng = np.random.default_rng(0)
+    pos = simulate_brownian(300, 33, dt=2.0, D=D, box=(4000, 4000),
+                            init_positions=rng.uniform(200, 3800, (300, 2)),
+                            rng=rng)[1]
+    meta = {"frames_per_latent": 2, "D": D, "drift": [0.0, 0.0], "msd_max_lag": 20}
+    ratio, link = window_msd([pos[:, t] for t in range(pos.shape[1])], meta)
+    assert link.n_full == 300
+    assert abs(ratio - 1.0) < 0.1
+
+
+def test_pool_msd_weights_by_full_tracks_and_skips_empty_windows():
+    from jepa_lptem.eval.tracking import LinkResult
+    empty = np.zeros((0, 2, 2))
+    results = [(1.0, LinkResult(empty, 1.0, 3, 3)),
+               (2.0, LinkResult(empty, 0.5, 2, 1)),
+               (None, LinkResult(empty, 0.0, 1, 0))]  # < 2 full tracks: no ratio
+    out = pool_msd(results, "_gt")
+    assert out["msd_ratio_pooled_gt"] == 1.25          # (3*1 + 1*2) / 4
+    assert out["msd_windows_used_gt"] == 2
+    assert out["track_coverage_mean_gt"] == 0.5        # coverage counts every window

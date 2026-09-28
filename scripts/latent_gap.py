@@ -181,11 +181,12 @@ def main() -> None:
           f"synthetic: {len(syn_samples)} samples from {len(set(syn_groups))} clips")
 
     import torch
-    from transformers import VJEPA2Model, VJEPA2VideoProcessor
+    from transformers import VJEPA2Model
+
+    from extract_features import MODEL_NAME, load_processor
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    name = "facebook/vjepa2-vitl-fpc64-256"
-    model = VJEPA2Model.from_pretrained(name).eval().to(device)
-    processor = VJEPA2VideoProcessor.from_pretrained(name)
+    model = VJEPA2Model.from_pretrained(MODEL_NAME).eval().to(device)
+    processor = load_processor()
     print(f"encoding on {device}...")
     real_f = encode(real_samples, device, model, processor)
     syn_f = encode(syn_samples, device, model, processor)

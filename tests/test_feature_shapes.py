@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-from extract_features import TUBELET, crop_and_align_gt, window_starts
+from extract_features import TUBELET, crop_and_align_gt, load_processor, window_starts
 
 
 def test_window_starts_plan_default_covers_100_frames():
@@ -43,15 +43,27 @@ def test_crop_and_align_gt_respects_window_start():
     assert np.allclose(p[0, :, 0], np.array([204.0, 206.0]) - 128.0)  # frames 4, 6
 
 
+def test_processor_passes_the_crop_through_unscaled():
+    # The ground truth is in crop coordinates, so the pixel the encoder sees at
+    # (r, c) must be the crop's (r, c). The processor's defaults would move this
+    # dot to (210, 28) -- resize 256 -> 292, then centre-crop 256.
+    vid = np.zeros((2, 256, 256, 3), dtype=np.uint8)
+    vid[:, 200, 40] = 255
+    x = load_processor()(list(vid), return_tensors="pt")["pixel_values_videos"]
+    assert tuple(x.shape) == (1, 2, 3, 256, 256)
+    img = x[0, 0, 0].numpy()
+    assert np.unravel_index(img.argmax(), img.shape) == (200, 40)
+
+
 @pytest.mark.gpu
 def test_encoder_shape_64_frames():
     """The plan's Step-6 smoke: 64 frames at 256^2 -> (1, 32*16*16, 1024)."""
     import torch
-    from transformers import VJEPA2Model, VJEPA2VideoProcessor
+    from transformers import VJEPA2Model
 
     from extract_features import MODEL_NAME
     model = VJEPA2Model.from_pretrained(MODEL_NAME).eval().cuda()
-    proc = VJEPA2VideoProcessor.from_pretrained(MODEL_NAME)
+    proc = load_processor()
     vid = np.random.randint(0, 255, (64, 256, 256, 3), dtype=np.uint8)
     with torch.no_grad():
         out = model(**proc(list(vid), return_tensors="pt").to("cuda"))

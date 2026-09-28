@@ -17,6 +17,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 import torch.nn as nn
+from scipy.ndimage import maximum_filter
 
 
 class AttentiveProbe(nn.Module):
@@ -28,7 +29,9 @@ class AttentiveProbe(nn.Module):
         self.attn = nn.MultiheadAttention(dim, heads, batch_first=True)
         self.head = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, out_dim))
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:  # (B, N, D) -> (B, out_dim)
+    def forward(
+        self, tokens: torch.Tensor
+    ) -> torch.Tensor:  # (B, N, D) -> (B, out_dim)
         q = self.query.expand(tokens.size(0), -1, -1)
         pooled, _ = self.attn(q, tokens, tokens)
         return self.head(pooled.squeeze(1))
@@ -68,14 +71,25 @@ def decode_centroids(
 ) -> np.ndarray:
     """Occupancy probabilities + sub-cell offsets -> ``(K, 2)`` ``(row, col)`` px centroids.
 
-    A cell ``(i, j)`` with ``occupancy > threshold`` yields a centroid at
+    A cell ``(i, j)`` with ``occupancy > threshold`` that is also the maximum of
+    its 3x3 neighbourhood yields a centroid at
     ``((i + 0.5 + dy) * cell_size, (j + 0.5 + dx) * cell_size)``, where ``(dy, dx)``
     is that cell's offset. ``occupancy`` is expected as probabilities in ``[0, 1]``
     (apply a sigmoid to logits before calling).
+
+    The local-maximum rule is what makes this usable on a trained probe: a
+    10-20 px particle covers several 16 px cells, and every neighbour of the
+    centre cell looks particle-like to the head, so thresholding alone emits one
+    detection per covered cell (measured: ~2 false positives per true one on the
+    probe's own training windows), which the linker cannot untangle.
     """
     occupancy = np.asarray(occupancy, dtype=float)
     offsets = np.asarray(offsets, dtype=float)
-    ii, jj = np.where(occupancy > threshold)
+    # ponytail: suppresses a real particle whose centre cell touches a brighter
+    # one; rare at <=9 % coverage, and the 16x16 target grid already merges
+    # same-cell pairs. Upgrade path: offset-aware NMS on decoded pixel distance.
+    peak = occupancy == maximum_filter(occupancy, size=3, mode="constant")
+    ii, jj = np.where((occupancy > threshold) & peak)
     if ii.size == 0:
         return np.zeros((0, 2))
     dy = offsets[ii, jj, 0]

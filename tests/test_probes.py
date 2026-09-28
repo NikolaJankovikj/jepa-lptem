@@ -71,3 +71,14 @@ def test_centroid_probe_learns_a_target_field():
     expected = np.array([(cell_r + 0.5 + dy) * cell, (cell_c + 0.5 + dx) * cell])
     assert cents.shape[0] == 1
     assert np.linalg.norm(cents[0] - expected) < 1.0
+
+
+def test_decode_centroids_keeps_one_detection_per_blob():
+    # A trained probe lights up every cell a particle covers, not just its centre
+    # cell. Only the local maximum may decode, or one particle becomes several.
+    occ = np.zeros((16, 16))
+    occ[4:7, 4:7] = 0.7
+    occ[5, 5] = 0.95          # blob: centre plus its 8 above-threshold neighbours
+    occ[12, 12] = 0.8         # a second, separate particle
+    cents = decode_centroids(occ, np.zeros((16, 16, 2)), threshold=0.5, cell_size=16.0)
+    assert sorted(map(tuple, cents)) == [(88.0, 88.0), (200.0, 200.0)]
