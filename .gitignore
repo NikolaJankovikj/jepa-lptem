@@ -6,3 +6,4 @@ experiments/*/wandb/
 __pycache__/
 *.egg-info/
 *.pt
+/logs/
