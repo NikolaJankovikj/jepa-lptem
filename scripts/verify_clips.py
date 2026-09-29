@@ -84,6 +84,7 @@ def main() -> None:
     ap.add_argument("npz", type=Path)
     ap.add_argument("--out", type=Path, default=Path("data/synthetic/smoke"))
     args = ap.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
 
     d = np.load(args.npz)
     frames, pos, rad = d["frames"], d["positions"], d["radii"]  # (T,H,W),(N,T,2),(N,T)
