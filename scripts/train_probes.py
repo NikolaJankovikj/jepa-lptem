@@ -129,6 +129,13 @@ class WindowCache:
                 self.meta[i],
             )
 
+    def load_gt(self, i: int):
+        """Positions and radii only. Reads ~0.2 ms against ~40 ms for a full
+        window: the target passes before training must not decompress every
+        window's features just to throw them away."""
+        with np.load(self.files[i]) as z:
+            return z["positions"], z["radii"]
+
 
 # --------------------------------- training -----------------------------------
 
@@ -138,12 +145,10 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
 
     torch.manual_seed(seed)
     # Target statistics + BCE pos-weight from the train split only.
-    t_all = np.concatenate([attentive_targets(cache.load(i)[2]) for i in idx_train])
+    t_all = np.concatenate([attentive_targets(cache.load_gt(i)[1]) for i in idx_train])
     mu, sd = t_all.mean(axis=0), t_all.std(axis=0) + 1e-9
     occ_frac = np.mean([
-        centroid_targets(cache.load(i)[1], cache.load(i)[2], cache.meta[i]["crop"])[
-            0
-        ].mean()
+        centroid_targets(*cache.load_gt(i), cache.meta[i]["crop"])[0].mean()
         for i in idx_train[:4]
     ])
     pos_weight = torch.tensor(
@@ -249,7 +254,7 @@ def main() -> None:
     split = split_by_clip(clip_of, seed=args.seed)
     idx = {k: [i for i, c in enumerate(clip_of) if c in v] for k, v in split.items()}
     n_coll = sum(
-        centroid_targets(cache.load(i)[1], cache.load(i)[2], cache.meta[i]["crop"])[2]
+        centroid_targets(*cache.load_gt(i), cache.meta[i]["crop"])[2]
         for i in idx["train"]
     )
     print(
