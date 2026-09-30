@@ -359,20 +359,22 @@ Physics round-trip on the recalibrated frames: GT exponents exact (0.333/0.500),
 
 ## Step 8 — Encoder adaptation (LoRA) — scope set by Gate 1
 
+**Decided 2026-09-30 (after Gate 1 PASS):** the **frozen encoder is the permanent encoder** for the main pipeline (Steps 9–13). Step 8 is one LoRA *comparison* run, judged at the Gate-1 level (probe R², reported per process and per crop-edge bucket, where count is weak) and on real video in Step 13. The cache is re-extracted and the downstream retrained only if adaptation wins by a clear margin — otherwise a 3-day side experiment would force redoing the predictor and Gate 2. Gate 1 left little headroom: MSD is already at the perfect-probe ceiling, mean radius at R² 0.91; the open question is count and, above all, sim-to-real transfer.
+
 **Where:** remote (the one multi-day GPU job: ~2–3 days/run). **Files:** `configs/lora_vitl.yaml`, `scripts/run_lora.py`
 
 - [ ] First get the **unmodified** official V-JEPA 2 pretraining loop running on 10 SAM-EM videos (tiny smoke config, 50 iters, loss decreases) — validates the vendored repo before touching it.
 - [ ] Add LoRA injection via `peft.LoraConfig(r=16, lora_alpha=32, target_modules=["qkv","proj"])`; objective unchanged (masked latent prediction); EMA target = frozen base + EMA of LoRA params; assert trainable params < 10 M.
 - [ ] Launch (SAM-EM trainset + dynamics-v1, bf16, DDP 2 GPU, 256² crops): `torchrun --nproc_per_node=2 scripts/run_lora.py --config configs/lora_vitl.yaml` in tmux. **While it runs, build Step 9 locally.**
-- [ ] Re-run Gate-1 probing on adapted features; keep whichever encoder maximizes held-out probe R² (max 3 runs total incl. variants); **freeze the choice permanently** and re-extract the feature cache with it.
+- [ ] Re-run Gate-1 probing on adapted features and compare with frozen (see the decision above: switch only on a clear win).
 - [ ] Commit configs + `experiments/encoder-selection/README.md`.
 
 ## Step 9 — Block-causal forecasting predictor
 
 **Where:** code + CPU tests local; training remote (cached features → **hours** per run). **Files:** `src/jepa_lptem/models/predictor.py`, `scripts/train_predictor.py`, `tests/test_predictor.py`
 
-- [ ] Failing tests: output shapes; rollout extends horizon; **block-causality** (perturb only the last context frame → all earlier per-step predictions unchanged).
-- [ ] Implement (note: temporal embedding broadcasts as `(1, T, 1, D)` — an earlier draft had a `transpose(1,2)` here that only worked when S == T; the shape tests exist to catch exactly this):
+- [x] Failing tests (`tests/test_predictor.py`, 7): output shapes; rollout extends horizon and feeds its own forecasts back; **block-causality** (perturb only the last context frame → all earlier per-step predictions unchanged).
+- [x] Implemented in `src/jepa_lptem/models/predictor.py`, with three deliberate departures from the draft below: (1) **residual from persistence** — output = current frame + a zero-initialised update, so the untrained model *is* the persistence baseline (tested) and training starts at the floor a martingale imposes; (2) **narrower working width** (`dim` 512, projected in/out of 1024; ~26 M params instead of ~100 M), since Gate 1 showed data, not compute, is the limit; (3) a **learned spatial embedding** beside the temporal one. Dropout 0 (V-JEPA uses none; also keeps the causality test exact). Original draft, for reference (note: temporal embedding broadcasts as `(1, T, 1, D)` — an earlier draft had a `transpose(1,2)` here that only worked when S == T; the shape tests exist to catch exactly this):
 
 ```python
 class LatentForecaster(nn.Module):
@@ -411,7 +413,7 @@ class LatentForecaster(nn.Module):
         return torch.stack(outs, dim=1)
 ```
 
-- [ ] Implement `scripts/train_predictor.py`: cached clips `(32, 256, 1024)`; context 8 latent frames → next-frame target (teacher forcing, L1 on normalized features, per V-JEPA 2-AC) + 2-step rollout loss; AdamW 1e-4, cosine, bf16, ~50 epochs.
+- [x] Implement `scripts/train_predictor.py`: cached clips `(32, 256, 1024)`; context 8 latent frames → next-frame target (teacher forcing, L1 on normalized features, per V-JEPA 2-AC) + 2-step rollout loss; AdamW 1e-4, cosine, bf16, ~50 epochs. Normalization is **per-channel z-score with train statistics** (not per-token LayerNorm) so forecasts map back to raw feature space for the frozen Gate-1 probes; stats ship in the checkpoint. Split = the Gate-1 `split_by_clip` seed, so no Gate-1 val/test clip is ever trained on. Windows load in parallel DataLoader workers, several random snippets per load. A test trains a small model on constant-velocity token dynamics and requires it to beat persistence 5×.
 - [ ] Train on remote; **log persistence L1 (`|feat[t+1] − feat[t]|`) alongside model L1 every epoch** — if the model never beats persistence on `growth_*` modes, debug before proceeding.
 - [ ] Commit config + curves.
 
