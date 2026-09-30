@@ -27,7 +27,9 @@ def compute_msd(traj: np.ndarray) -> np.ndarray:
     np.ndarray
         Shape ``(T - 1,)``. ``msd[k]`` is the mean squared displacement over a lag
         of ``k + 1`` frames, averaged over every particle and every valid start
-        frame. For 2D Brownian motion this grows as ``4 D t``.
+        frame. NaN positions (frames a gap-closing linker skipped) drop out of
+        every pair they touch rather than being filled in. For 2D Brownian motion
+        this grows as ``4 D t``.
     """
     traj = np.asarray(traj, dtype=float)
     if traj.ndim != 3 or traj.shape[2] != 2:
@@ -35,7 +37,7 @@ def compute_msd(traj: np.ndarray) -> np.ndarray:
     _, T, _ = traj.shape
     return np.array(
         [
-            np.mean(np.sum((traj[:, lag:] - traj[:, :-lag]) ** 2, axis=-1))
+            np.nanmean(np.sum((traj[:, lag:] - traj[:, :-lag]) ** 2, axis=-1))
             for lag in range(1, T)
         ]
     )

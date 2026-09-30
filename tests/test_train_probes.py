@@ -102,3 +102,15 @@ def test_pool_msd_weights_by_full_tracks_and_skips_empty_windows():
     assert out["msd_ratio_pooled_gt"] == 1.25          # (3*1 + 1*2) / 4
     assert out["msd_windows_used_gt"] == 2
     assert out["track_coverage_mean_gt"] == 0.5        # coverage counts every window
+
+
+def test_edge_counts_count_particles_straddling_the_crop_border():
+    from gate1_secondary import edge_counts
+    pos = np.array([
+        [[128.0, 128.0], [128.0, 128.0], [5.0, 128.0]],     # centre, centre, 5 px inside top edge
+        [[128.0, 128.0], [5.0, 100.0], [128.0, 128.0]],     # inside, 5 px from the top edge
+        [[128.0, 128.0], [128.0, 128.0], [100.0, 262.0]],   # outside, 6 px past the right edge
+    ])                                                       # (N=3, T=3, 2)
+    assert edge_counts(pos, crop=256).tolist() == [0, 1, 2]
+    far = np.array([[[128.0, 300.0]]])                       # well outside: not ambiguous
+    assert edge_counts(far, crop=256).tolist() == [0]

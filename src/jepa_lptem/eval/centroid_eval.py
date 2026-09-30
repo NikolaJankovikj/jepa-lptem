@@ -58,15 +58,16 @@ def pick_threshold(windows, thresholds=THRESHOLDS) -> float:
     return float(thresholds[int(f1.argmax())])
 
 
-def window_msd(frames, meta):
+def window_msd(frames, meta, memory: int = 0):
     """Link one window's per-frame centroids -> (MSD/4Dt ratio or None, LinkResult).
 
     Drift is removed exactly and lags are capped by the clip's ``msd_max_lag``.
+    ``memory`` > 0 closes gaps of up to that many frames (missed frames stay NaN).
     Raises trackpy's ``SubnetOversizeException`` when even adaptive linking gives up.
     """
     dt = meta["frames_per_latent"]
     step = 1.772 * np.sqrt(meta["D"] * dt) + dt * np.hypot(*meta["drift"])
-    link = link_tracks(frames, max_dist=max(8.0, 3.0 * step))
+    link = link_tracks(frames, max_dist=max(8.0, 3.0 * step), memory=memory)
     if link.n_full < MIN_FULL_TRACKS:
         return None, link
     tracks = link.tracks.copy()
@@ -95,14 +96,15 @@ def pool_msd(results, suffix: str = "") -> dict:
     }
 
 
-def eval_centroid_msd(windows, threshold: float) -> dict:
+def eval_centroid_msd(windows, threshold: float, memory: int = 0) -> dict:
     """Decode -> link -> pooled MSD/4Dt ratio, exactly as Gate 2 will consume it.
 
     Reported next to the same pipeline run on the ground-truth centroids (the
     ``_gt`` keys): the ceiling a perfect probe reaches. It is not 1 -- only
     particles that stay inside the crop for the whole window form full tracks,
     which biases MSD low (0.93-0.98 simulated) and caps coverage near 0.3-0.5 --
-    so the probe is judged against this ceiling, not against 1.
+    so the probe is judged against this ceiling, not against 1. ``memory`` applies
+    the same gap closing to both.
     """
     from trackpy.linking.utils import SubnetOversizeException
 
@@ -112,9 +114,9 @@ def eval_centroid_msd(windows, threshold: float) -> dict:
     for window in windows:
         c, pred = decode_and_match(window, threshold)
         counts += c
-        truth.append(window_msd(window[2], window[3]))
+        truth.append(window_msd(window[2], window[3], memory))
         try:
-            probe.append(window_msd(pred, window[3]))
+            probe.append(window_msd(pred, window[3], memory))
         except SubnetOversizeException:
             # the probe emitted a wall of false positives on this window --
             # skip it, but never silently

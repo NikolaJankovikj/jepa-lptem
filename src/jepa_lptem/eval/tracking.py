@@ -47,8 +47,10 @@ class LinkResult(NamedTuple):
     Attributes
     ----------
     tracks : np.ndarray
-        Shape ``(n_full, T, 2)`` — only tracks present in *every* frame, sorted by
-        first-frame position for determinism. Feed these to ``compute_msd``.
+        Shape ``(n_full, T, 2)`` — only tracks spanning *every* frame, sorted by
+        first-frame position for determinism. With ``memory > 0`` a spanning track
+        may skip up to ``memory`` frames at a time; those entries are NaN. Feed
+        these to ``compute_msd``, which averages over observed pairs only.
     coverage : float
         ``n_full / n_particles`` — fraction of linked particles that survived the
         full clip. Report this alongside any MSD derived from ``tracks``.
@@ -76,7 +78,8 @@ def link_tracks(
     max_dist : float
         Maximum inter-frame displacement to link (trackpy ``search_range``).
     memory : int
-        Frames a particle may vanish for and still be re-linked (gap-closing).
+        Frames a particle may vanish for and still be re-linked (gap-closing);
+        the skipped frames come back as NaN in ``tracks``.
 
     Returns
     -------
@@ -93,7 +96,7 @@ def link_tracks(
     evaluation. If even 2 px cannot resolve it, the exception still propagates --
     callers grading many windows should catch it and report the skip.
     """
-    T = len(frames)
+    n_frames = len(frames)
     rows = []
     for f, cents in enumerate(frames):
         cents = np.asarray(cents, dtype=float).reshape(-1, 2)
@@ -101,24 +104,34 @@ def link_tracks(
             rows.append({"frame": f, "y": row, "x": col})
 
     if not rows:
-        return LinkResult(np.zeros((0, T, 2)), 0.0, 0, 0)
+        return LinkResult(np.zeros((0, n_frames, 2)), 0.0, 0, 0)
 
     df = pd.DataFrame(rows)
-    linked = tp.link(df, search_range=max_dist, memory=memory,
-                     adaptive_stop=2.0, adaptive_step=0.5)
-
+    linked = tp.link(
+        df, search_range=max_dist, memory=memory, adaptive_stop=2.0, adaptive_step=0.5
+    )
     n_particles = int(linked["particle"].nunique())
+    tracks = _spanning_tracks(linked, n_frames)
+    coverage = len(tracks) / n_particles if n_particles else 0.0
+    return LinkResult(tracks, coverage, n_particles, len(tracks))
+
+
+def _spanning_tracks(linked: pd.DataFrame, n_frames: int) -> np.ndarray:
+    """Tracks observed in the first and the last frame -> ``(n, n_frames, 2)``.
+
+    With memory > 0 a spanning track may skip frames; they stay NaN. Never
+    interpolate them: a straight line under-states the random step and biases
+    MSD low. With memory = 0 a spanning track has every frame.
+    """
     full = []
-    for pid, grp in linked.groupby("particle"):
-        if grp["frame"].nunique() == T:
-            grp = grp.sort_values("frame")
-            full.append(grp[["y", "x"]].to_numpy())
-
-    n_full = len(full)
-    coverage = n_full / n_particles if n_particles else 0.0
-    if n_full == 0:
-        return LinkResult(np.zeros((0, T, 2)), coverage, n_particles, 0)
-
-    tracks = np.stack(full)  # (n_full, T, 2)
+    for _, grp in linked.groupby("particle"):
+        if grp["frame"].min() != 0 or grp["frame"].max() != n_frames - 1:
+            continue
+        track = np.full((n_frames, 2), np.nan)
+        track[grp["frame"].to_numpy()] = grp[["y", "x"]].to_numpy()
+        full.append(track)
+    if not full:
+        return np.zeros((0, n_frames, 2))
+    tracks = np.stack(full)
     order = np.lexsort((tracks[:, 0, 1], tracks[:, 0, 0]))  # by first (row, col)
-    return LinkResult(tracks[order], coverage, n_particles, n_full)
+    return tracks[order]

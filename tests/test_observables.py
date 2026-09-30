@@ -57,3 +57,14 @@ def test_size_dist_distance_grows_with_shift():
     near = size_dist_distance(a, a + 1.0)
     far = size_dist_distance(a, a + 5.0)
     assert 0 < near < far
+
+
+def test_msd_ignores_missing_positions_instead_of_filling_them():
+    rng = np.random.default_rng(2)
+    D, T, N = 0.5, 60, 800
+    traj = np.cumsum(rng.normal(0, np.sqrt(2 * D), (N, T, 2)), axis=1)
+    gappy = traj.copy()
+    gappy[rng.random((N, T)) < 0.2] = np.nan               # 20 % of positions missing
+    msd, msd_gappy = compute_msd(traj), compute_msd(gappy)
+    assert np.isfinite(msd_gappy).all()
+    assert np.allclose(msd_gappy[:20], msd[:20], rtol=0.05)  # same estimate, no bias

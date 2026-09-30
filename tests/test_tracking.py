@@ -58,3 +58,14 @@ def test_linking_survives_dense_false_positive_cluster():
     frames = [rng.uniform(0, 30, (60, 2)) for _ in range(3)]  # dense 30px cluster
     result = link_tracks(frames, max_dist=48.0)
     assert result.n_particles > 0  # linked something, raised nothing
+
+
+def test_gap_closing_keeps_a_track_with_a_missed_frame_as_nan():
+    # one particle, missed in frame 2 (e.g. a probe false negative)
+    frames = [np.array([[float(t), 0.0]]) for t in range(5)]
+    frames[2] = np.zeros((0, 2))
+    assert link_tracks(frames, max_dist=3.0).n_full == 0          # memory 0: broken
+    res = link_tracks(frames, max_dist=3.0, memory=1)
+    assert res.n_full == 1 and res.coverage == 1.0
+    assert np.isnan(res.tracks[0, 2]).all()                       # gap left empty, not filled
+    assert np.allclose(res.tracks[0, [0, 1, 3, 4], 0], [0, 1, 3, 4])
