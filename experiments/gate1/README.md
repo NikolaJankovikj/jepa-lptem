@@ -75,8 +75,11 @@ headline after seeing it would move the goalposts.
 ## Secondary analyses (2026-09-30)
 
 `scripts/gate1_secondary.py` (commit `6816475`), from the saved `probes.pt`, same val/test
-split, no retraining. These sit **next to** the pre-registered result above; none of them
-changes the verdict.
+split, no retraining; raw numbers in `secondary.json`. These sit **next to** the
+pre-registered result above; none of them changes the verdict. Sanity check: at the
+headline settings (threshold 0.95, no gap closing) the re-run reproduces `metrics.json`'s
+test numbers exactly — precision 0.8955, recall 0.8102, MSD 0.9946 over 57 windows — so the
+saved probes and the recorded split were reloaded faithfully.
 
 **1. Threshold — the grid edge was not hiding anything.** Re-searched on val over a grid
 reaching 0.99, the F1 optimum is **0.95 again**. Limitation 1 is retired; the headline
