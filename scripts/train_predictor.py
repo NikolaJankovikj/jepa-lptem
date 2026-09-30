@@ -241,7 +241,8 @@ def report(row: dict, rollout: int, processes) -> None:
         f"epoch {row['epoch']:3d}  train {row['train_loss']:.4f}  "
         f"val +1 model {row['model_l1_1']:.4f} / persist {row['persistence_l1_1']:.4f}  "
         f"+{rollout} model {row[f'model_l1_{rollout}']:.4f} / persist "
-        f"{row[f'persistence_l1_{rollout}']:.4f}  ({row['seconds']:.0f}s)"
+        f"{row[f'persistence_l1_{rollout}']:.4f}  "
+        f"(train {row['train_seconds']:.0f}s, val {row['val_seconds']:.0f}s)"
     )
     for p in processes:
         m, q = row[f"model_l1_1_{p}"], row[f"persistence_l1_1_{p}"]
@@ -327,12 +328,10 @@ def main() -> None:
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
         loss = train_epoch(model, train_loader, (optimizer, sched), args, device)
-        row = {
-            "epoch": epoch,
-            "train_loss": loss,
-            **evaluate(model, val_loader, args, device),
-            "seconds": time.time() - t0,
-        }
+        t1 = time.time()
+        row = {"epoch": epoch, "train_loss": loss, **evaluate(model, val_loader, args, device)}
+        # timed apart: val is a fixed cost, so only the train time scales with --max-train-windows
+        row.update(train_seconds=t1 - t0, val_seconds=time.time() - t1)
         history.append(row)
         report(row, args.rollout, val_loader.dataset.processes)
         if row["model_l1_1"] < best:
