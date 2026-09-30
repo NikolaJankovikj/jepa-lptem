@@ -348,11 +348,12 @@ Physics round-trip on the recalibrated frames: GT exponents exact (0.333/0.500),
   - **Centroid decode emitted one detection per covered cell.** A 10–20 px particle spans several 16 px cells and all of them fire; on its own training windows the probe produced ~2 false positives per true one, so linking found no full tracks and the MSD criterion could not pass whatever the features held. `decode_centroids` now keeps only 3×3 local maxima, and the occupancy threshold is picked on val by detection F1 (the BCE pos-weight makes 0.5 uncalibrated). Smoke precision 0.41 → 0.76–0.83.
   - **Perfect-probe ceiling.** Only particles that stay inside the 256 crop for a whole window form full tracks, which biases MSD/4Dt low (0.93–0.98, simulated on GT) and caps coverage at ~0.3–0.5. The same MSD pipeline now also runs on GT centroids (`*_gt` keys in `metrics.json`); the probe is read against that, not against 1. Scoring lives in `eval/centroid_eval.py` so Gate 2 grades identically.
   - The crop itself stays: it keeps the simulator's reflecting walls out of view. Rendering at 256² would not raise the in-view count (~4, set by the coverage cap), only move the walls into the image.
-- [ ] Run on frozen features of the full set (remote); rsync metrics back; analyze locally.
-- [ ] **Decide the gate:**
+- [x] Run on frozen features of the full set (remote, 1× 3090, ~4 h disk-bound); rsync metrics back; analyze locally.
+- [x] **Decide the gate:** → **PASS, marginal on count** (test: R² mean radius 0.910, count 0.806, MSD 0.995 vs ceiling 0.955; val count 0.699). See `experiments/gate1/README.md`.
   - **PASS** (held-out R² ≥ 0.8 for mean radius and count at mid SNR; MSD from decoded tracks within 20% of GT MSD, with track-coverage reported): frozen encoder suffices → **LoRA (Step 8) shrinks to a single comparison run.**
   - **FAIL:** Step 8 becomes the main path.
-- [ ] Write `experiments/gate1/README.md` same day (a thesis figure either way). Commit.
+- [x] Write `experiments/gate1/README.md` same day (a thesis figure either way). Commit.
+- [ ] Secondary analyses from the saved `probes.pt` (no retraining): threshold grid past 0.95, gap-closing linking, count error vs distance of particles to the crop edge.
 
 ## Step 8 — Encoder adaptation (LoRA) — scope set by Gate 1
 
