@@ -65,3 +65,11 @@ particular dose draw), but it is worth re-checking at Gate 1 with token-level fe
 3. **Latent-space containment** — this experiment: ratio 0.92, separable-but-adjacent. ✅
 4. **Downstream transfer** — Gate 1 on real features; Step 13 full pipeline. *Pending
    (requires GPU phase); the only definitive level.*
+
+**Update 2026-09-30.** Caveat 2 is answered on the synthetic side: token-level probing of the
+full frozen cache now exists (Gate 1 PASS — mean radius R² 0.91, count 0.81, MSD at the
+perfect-probe ceiling; `experiments/gate1/`), and a single-token linear probe finds
+particle-centre cells at held-out AUC 0.98 (`PLAN.md`, Step 6 cache audit). Level 4 is still
+open where it matters: none of this has touched real video yet — that is Step 13, and the
+strata footnote above (real's neighbours are physics-stratum) is still to re-check with
+token-level features.

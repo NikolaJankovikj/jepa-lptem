@@ -8,7 +8,7 @@ probes that read physical observables (particle size distributions, growth-law e
 off the *predicted future* latent states, tested against exact simulator ground truth, a
 persistence baseline, and a pixel-space video-prediction baseline.
 
-See [`PLAN.md`](PLAN.md) for the step-by-step implementation plan and [`thesis_brief.md`](thesis_brief.md)
+See [`PLAN.md`](PLAN.md) for the step-by-step implementation plan and current status and [`thesis_brief.md`](thesis_brief.md)
 for the research framing.
 
 ## Setup
@@ -19,7 +19,14 @@ uv sync
 
 Local machine = coding + CPU unit tests + analysis + writing. GPU work (feature extraction,
 LoRA adaptation, predictor/baseline training) runs on the remote 2× RTX 3090 box — see the
-"Two machines, one repo" section of `PLAN.md`.
+"Two machines, one repo" section of `PLAN.md` and the runbook in [`docs/remote.md`](docs/remote.md).
+
+## Status (2026-09-30)
+
+- **Dataset** `dynamics-v1`: 2000 audited clips — [`experiments/dataset-v1/`](experiments/dataset-v1/README.md)
+- **Feature cache**: 4000 frozen V-JEPA 2 windows, audited (Step 6 in `PLAN.md`)
+- **Gate 1: PASS**, marginal on count — [`experiments/gate1/`](experiments/gate1/README.md)
+- **Next**: Gate-1 secondary analyses, then the forecasting predictor (Step 9)
 
 ## Tests
 
