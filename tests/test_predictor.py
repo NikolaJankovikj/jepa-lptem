@@ -101,3 +101,17 @@ def test_standardize_round_trips():
     z = standardize(x, mean, std)
     assert abs(float(z.mean())) < 1e-5
     assert np.allclose(unstandardize(z, mean, std), x, atol=1e-5)
+
+
+def test_context_mean_beats_persistence_on_pure_noise():
+    # A static scene under fresh per-frame noise: the next frame is unpredictable
+    # beyond its mean, so averaging the context beats holding the last frame. This
+    # is why persistence alone is too weak a bar for "learned dynamics".
+    from train_predictor import forecast_losses
+    torch.manual_seed(2)
+    x = torch.randn(1, 1, S, D) + 0.5 * torch.randn(64, T + 2, S, D)
+    with torch.no_grad():
+        _, parts = forecast_losses(small_model(), x, ctx=T, rollout=2)
+    for k in (1, 2):
+        assert parts[f"ctxmean_l1_{k}"].mean() < 0.8 * parts[f"persistence_l1_{k}"].mean()
+        assert torch.allclose(parts[f"model_l1_{k}"], parts[f"persistence_l1_{k}"])  # untrained

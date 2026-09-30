@@ -119,8 +119,11 @@ def collate(items):
 def forecast_losses(model, x: torch.Tensor, ctx: int, rollout: int):
     """``x`` ``(B, ctx + rollout, S, D)`` -> (training loss, per-sample L1 parts).
 
-    Parts are ``(B,)`` tensors for model and persistence at +1 and at +``rollout``;
-    persistence at +k is the last context frame held k frames forward.
+    Parts are ``(B,)`` tensors at +1 and at +``rollout`` for the model and two
+    baselines held k frames forward: **persistence** (the last context frame) and
+    **context mean** (the average of all context frames). Each frame carries fresh
+    shot noise, so averaging alone beats persistence -- even on static clips. Only a
+    gain over the context mean is evidence of learned dynamics.
     """
     preds = model.forward_all(x[:, :ctx])  # [:, t] forecasts x[:, t + 1]
     teacher = (preds - x[:, 1 : ctx + 1]).abs().mean()
@@ -134,13 +137,13 @@ def forecast_losses(model, x: torch.Tensor, ctx: int, rollout: int):
     def per_sample(a, b):
         return (a - b).abs().mean(dim=(1, 2)).detach()
 
-    last = x[:, ctx - 1]
-    parts = {
-        "model_l1_1": per_sample(preds[:, -1], x[:, ctx]),
-        "persistence_l1_1": per_sample(last, x[:, ctx]),
-        f"model_l1_{rollout}": per_sample(nxt, x[:, ctx + rollout - 1]),
-        f"persistence_l1_{rollout}": per_sample(last, x[:, ctx + rollout - 1]),
-    }
+    last, mean = x[:, ctx - 1], x[:, :ctx].mean(dim=1)
+    parts = {}
+    for k, forecast in ((1, preds[:, -1]), (rollout, nxt)):
+        target = x[:, ctx + k - 1]
+        parts[f"model_l1_{k}"] = per_sample(forecast, target)
+        parts[f"persistence_l1_{k}"] = per_sample(last, target)
+        parts[f"ctxmean_l1_{k}"] = per_sample(mean, target)
     return loss, parts
 
 
@@ -236,18 +239,19 @@ def cosine_with_warmup(optimizer, total_steps: int, warmup: int) -> LambdaLR:
 
 
 def report(row: dict, rollout: int, processes) -> None:
-    """One epoch's line, then +1 model vs persistence per process."""
+    """One epoch's line, then +1 model vs both baselines per process."""
     print(
         f"epoch {row['epoch']:3d}  train {row['train_loss']:.4f}  "
         f"val +1 model {row['model_l1_1']:.4f} / persist {row['persistence_l1_1']:.4f}  "
         f"+{rollout} model {row[f'model_l1_{rollout}']:.4f} / persist "
-        f"{row[f'persistence_l1_{rollout}']:.4f}  "
+        f"{row[f'persistence_l1_{rollout}']:.4f} / ctx-mean {row[f'ctxmean_l1_{rollout}']:.4f}  "
         f"(train {row['train_seconds']:.0f}s, val {row['val_seconds']:.0f}s)"
     )
     for p in processes:
-        m, q = row[f"model_l1_1_{p}"], row[f"persistence_l1_1_{p}"]
+        m, q, c = (row[f"{b}_l1_1_{p}"] for b in ("model", "persistence", "ctxmean"))
         if m is not None:
-            print(f"    {p:12s} +1 model {m:.4f} / persist {q:.4f}  ({1 - m / q:+.1%})")
+            print(f"    {p:12s} +1 model {m:.4f}  vs persist {q:.4f} ({1 - m / q:+.1%})"
+                  f"  vs ctx-mean {c:.4f} ({1 - m / c:+.1%})")
 
 
 def pick_device() -> str:
