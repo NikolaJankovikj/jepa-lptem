@@ -369,7 +369,7 @@ Physics round-trip on the recalibrated frames: GT exponents exact (0.333/0.500),
 - [ ] Re-run Gate-1 probing on adapted features and compare with frozen (see the decision above: switch only on a clear win).
 - [ ] Commit configs + `experiments/encoder-selection/README.md`.
 
-## Step 9 — Block-causal forecasting predictor
+## Step 9 — Block-causal forecasting predictor ✅
 
 **Where:** code + CPU tests local; training remote (cached features → **hours** per run). **Files:** `src/jepa_lptem/models/predictor.py`, `scripts/train_predictor.py`, `tests/test_predictor.py`
 
@@ -414,9 +414,9 @@ class LatentForecaster(nn.Module):
 ```
 
 - [x] Implement `scripts/train_predictor.py`: cached clips `(32, 256, 1024)`; context 8 latent frames → next-frame target (teacher forcing, L1 on normalized features, per V-JEPA 2-AC) + 2-step rollout loss; AdamW 1e-4, cosine, bf16, ~50 epochs. Normalization is **per-channel z-score with train statistics** (not per-token LayerNorm) so forecasts map back to raw feature space for the frozen Gate-1 probes; stats ship in the checkpoint. Split = the Gate-1 `split_by_clip` seed, so no Gate-1 val/test clip is ever trained on. Windows load in parallel DataLoader workers, several random snippets per load. A test trains a small model on constant-velocity token dynamics and requires it to beat persistence 5×.
-- [ ] Train on remote; **log persistence L1 (`|feat[t+1] − feat[t]|`) alongside model L1 every epoch** — if the model never beats persistence on `growth_*` modes, debug before proceeding.
+- [x] Train on remote (2026-10-01, 6.4 h, converged by epoch ~45; `experiments/predictor-v1/`): val +1 L1 **0.672** vs persistence 0.957 and **context mean 0.741 — 9.3 % below the context mean** (+2: 7.9 %), but the same ~9 % on every process, static included: feature L1 is dominated by noise/motion shared by all processes, so it cannot show growth physics — Gate 2 does. **Log persistence L1 (`|feat[t+1] − feat[t]|`) alongside model L1 every epoch** — if the model never beats persistence on `growth_*` modes, debug before proceeding.
   **Baseline added 2026-09-30: context mean.** Each latent frame carries fresh shot noise, so simply averaging the 8 context frames beats persistence by a wide margin even on static clips (smoke val: L1 0.74 vs 0.96). Beating persistence is therefore not evidence of learned dynamics; beating the **context mean** is. Trial on the PC (200 windows, 1 epoch): model 0.876 vs persistence 0.955, a uniform +8 % across all five processes including static — the signature of noise averaging, not physics. A 30-epoch smoke model (0.840) was still *worse* than the context mean (0.738). If the full run does not beat the context mean, that is the debug item before Step 10 (candidates: residual from the context mean instead of the last frame; longer training).
-- [ ] Commit config + curves.
+- [x] Commit config + curves (`history.json`, README; `predictor.pt` stays out of git).
 
 ## Step 10 — GATE 2: the core experiment — probe predicted latents
 
