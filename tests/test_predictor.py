@@ -115,3 +115,20 @@ def test_context_mean_beats_persistence_on_pure_noise():
     for k in (1, 2):
         assert parts[f"ctxmean_l1_{k}"].mean() < 0.8 * parts[f"persistence_l1_{k}"].mean()
         assert torch.allclose(parts[f"model_l1_{k}"], parts[f"persistence_l1_{k}"])  # untrained
+
+
+def test_init_restores_weights_stats_and_architecture(tmp_path):
+    from argparse import Namespace
+
+    from train_predictor import load_init, save_checkpoint
+
+    model = small_model()
+    stats = (np.full(D, 2.0, np.float32), np.full(D, 3.0, np.float32))
+    trained = Namespace(ctx=6, dim=32, depth=2, heads=4)
+    save_checkpoint(tmp_path / "p.pt", model, stats, trained, epoch=7, processes=["static"])
+
+    cli = Namespace(ctx=8, dim=512, depth=8, heads=8)  # CLI defaults must not win
+    state, (mean, std) = load_init(tmp_path / "p.pt", cli)
+    assert vars(cli) == vars(trained)
+    assert np.array_equal(mean, stats[0]) and np.array_equal(std, stats[1])
+    assert all(torch.equal(state[k], v) for k, v in model.state_dict().items())

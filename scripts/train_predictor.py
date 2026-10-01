@@ -30,6 +30,12 @@ Usage (local smoke):
 Remote:
     uv run python -u scripts/train_predictor.py --features data/features/dynamics-v1 \
         --out experiments/predictor-v1
+Continue a trained predictor on a longer rollout (predictor-v2):
+    ... --init experiments/predictor-v1/predictor.pt --rollout 8 --epochs 15 --lr 5e-5
+
+The checkpoint kept is the best on val L1 at the **rollout horizon** (predictor-v1, at
+rollout 2, was selected at +1): a longer rollout exists to keep far forecasts sharp,
+so that is what selection rewards.
 """
 
 from __future__ import annotations
@@ -278,6 +284,15 @@ def save_checkpoint(path: Path, model, stats, args, epoch: int, processes) -> No
     )
 
 
+def load_init(path: Path, args):
+    """Start from a trained predictor: its weights, plus the standardization and
+    architecture they only make sense with (these override the CLI's)."""
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)  # our own checkpoint
+    for key in ("ctx", "dim", "depth", "heads"):
+        setattr(args, key, ckpt["config"][key])
+    return ckpt["model"], (ckpt["mean"], ckpt["std"])
+
+
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--features", required=True, type=Path)
@@ -298,6 +313,7 @@ def parse_args():
         "--max-train-windows", type=int, default=0, help="0 = all (smoke runs cap it)"
     )
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--init", type=Path, help="a predictor.pt to continue from")
     return ap.parse_args()
 
 
@@ -307,7 +323,11 @@ def main() -> None:
     device = pick_device()
     cache = WindowCache(args.features)
     idx = split_windows(cache, args.max_train_windows)
-    stats = channel_stats(cache, idx["train"], np.random.default_rng(args.seed))
+    if args.init:
+        init_state, stats = load_init(args.init, args)
+    else:
+        init_state = None
+        stats = channel_stats(cache, idx["train"], np.random.default_rng(args.seed))
     train_loader, val_loader = make_loaders(cache, idx, stats, args)
     n_spatial, enc_dim = cache.load(0)[0].shape[1:]
     model = LatentForecaster(
@@ -316,7 +336,10 @@ def main() -> None:
         depth=args.depth,
         heads=args.heads,
         n_spatial=n_spatial,
-    ).to(device)
+    )
+    if init_state is not None:
+        model.load_state_dict(init_state)
+    model = model.to(device)
     print(
         f"windows { {k: len(v) for k, v in idx.items()} }  device {device}  "
         f"params {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M  "
@@ -338,8 +361,8 @@ def main() -> None:
         row.update(train_seconds=t1 - t0, val_seconds=time.time() - t1)
         history.append(row)
         report(row, args.rollout, val_loader.dataset.processes)
-        if row["model_l1_1"] < best:
-            best = row["model_l1_1"]
+        if row[f"model_l1_{args.rollout}"] < best:
+            best = row[f"model_l1_{args.rollout}"]
             save_checkpoint(
                 args.out / "predictor.pt",
                 model,
@@ -350,7 +373,7 @@ def main() -> None:
             )
         (args.out / "history.json").write_text(json.dumps(history, indent=1))
     print(
-        f"\nbest val +1 model L1 {best:.4f}; wrote {args.out}/predictor.pt, history.json"
+        f"\nbest val +{args.rollout} model L1 {best:.4f}; wrote {args.out}/predictor.pt, history.json"
     )
 
 
