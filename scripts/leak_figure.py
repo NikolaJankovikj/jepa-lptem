@@ -2,9 +2,9 @@
 
 Two versions of one window share their 16 context frames pixel for pixel; from
 frame 16 on, one carries a different clip's frames. Whole-window encoding (the
-Gate-2 cache) lets the context features change anyway -- and the frozen Gate-1
-probe can read the other clip's future particles in the past. Per-frame
-encoding (``--per-frame``) leaves the context features bit-identical.
+Gate-2 cache) lets the context features change anyway -- and with them what the
+frozen Gate-1 probe reads in the past. Per-frame encoding (``--per-frame``) leaves
+the context features bit-identical.
 
 Usage (local, MPS ~1 min):
     uv run python scripts/leak_figure.py --data data/synthetic/smoke_v3 \

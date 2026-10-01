@@ -60,6 +60,8 @@ carries another clip's frames.
   in the past depends on the future.
 - **Per-frame encoding (`--per-frame`):** the change is exactly 0.
 
+As an animation (`scripts/leak_gif.py`): ![look-ahead animation](lookahead.gif)
+
 ## Reading
 
 1. **The look-ahead is real and large.**
