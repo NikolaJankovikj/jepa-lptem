@@ -45,6 +45,21 @@ cached context (`experiments/core/README.md`):
 | exponent: coalescence / ripening (floor 0.057 / 0.065) | −0.108 / 0.012 | 0.235 / 0.239 |
 | size test at +24: diffusion / reaction | FAIL / untestable | "PASS" / "PASS" |
 
+## Seeing it: swap only the future
+
+![look-ahead](lookahead.png)
+
+`scripts/leak_figure.py` (smoke clips, 48-frame window) takes two versions of one window.
+Their 16 context frames are identical pixel for pixel; from frame 16 on, one version
+carries another clip's frames.
+
+- **Whole-window encoding** (the Gate-2 cache): the *context* features change anyway,
+  by 0.11–0.19 in 1 − cosine, growing toward the future.
+- **The Gate-1 probe's reading of the last context frame changes too.** Its occupancy at
+  the particles that are actually in that frame drops by up to 0.8: what the probe "sees"
+  in the past depends on the future.
+- **Per-frame encoding (`--per-frame`):** the change is exactly 0.
+
 ## Reading
 
 1. **The look-ahead is real and large.**
