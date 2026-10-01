@@ -124,15 +124,90 @@ Gate 1. The model scored 0.464 and persistence 0.051, but neither number is inte
 6. **No confidence intervals yet.** Differences of a few percent (e.g. diffusion model vs
    persistence) should not be read as real until bootstrap intervals over clips are added.
 
+## Follow-up: +24 rollout (POST HOC)
+
+**Script:** `scripts/gate2_followup.py` (commit `b7d4458`). The criterion was fixed in
+`PLAN.md` (commit `8110715`) before the run. Output: `followup.json`.
+
+**Setup.**
+- One snippet per test window: context = latent frames 0–7, forecast = 8–31.
+- Physics stratum, 95 % bootstrap CIs over test clips.
+- The predictor was trained on +1/+2 only, so +24 is far outside its training rollout.
+
+**(A) Size at +24.** "Gain" is the size-distance improvement over persistence; positive
+means closer to the truth.
+
+| | model | persistence | floor | floor gain [CI] | model gain [CI] | result |
+|---|---|---|---|---|---|---|
+| diffusion | 6.68 | 3.65 | 1.79 | +1.86 [+1.57, +2.16] | −3.04 [−5.45, −1.14] | **FAIL** |
+| reaction | 8.15 | 4.45 | 2.83 | +1.62 [−0.30, +2.80] | −3.70 [−9.76, +0.02] | untestable |
+| ripening | 10.87 | 2.86 | 3.34 | −0.48 [−0.88, −0.15] | −8.02 [−11.80, −4.78] | untestable |
+| static | 17.11 | 2.51 | 2.68 | −0.16 [−0.73, +0.39] | −14.59 [−27.03, −7.19] | (not judged) |
+
+**(B) Growth exponent, fitted over the 24 forecast frames:**
+
+| | model [CI] | floor | GT in crop | true | result |
+|---|---|---|---|---|---|
+| coalescence | −0.108 [−0.259, +0.088] | 0.057 | 0.043 | – | |
+| diffusion | 0.218 [+0.153, +0.275] | 0.321 | 0.333 | 0.333 | **FAIL** |
+| reaction | 0.414 [+0.318, +0.469] | 0.497 | 0.500 | 0.500 | pass |
+| ripening | 0.012 [−0.064, +0.162] | 0.065 | 0.085 | – | |
+| static | 0.006 [−0.028, +0.071] | 0.013 | −0.004 | 0.000 | (pass) |
+
+**(C) Blur check: static clips, model / floor.**
+
+| | +1 | +5 | +10 | +24 |
+|---|---|---|---|---|
+| probed count | 5.9 / 6.0 | 5.5 / 6.0 | 4.9 / 5.7 | **1.9** / 5.5 |
+| mean radius (px) | 12.6 / 12.4 | 12.7 / 12.5 | 13.1 / 12.5 | 12.0 / 12.7 |
+| peak occupancy | 1.00 / 1.00 | 0.99 / 1.00 | 0.97 / 1.00 | 0.89 / 1.00 |
+
+All processes show the same pattern: by +24 the model loses 43–74 % of the count while the
+floor keeps it. F1 at +24: model 0.02, persistence 0.03–0.06, floor 0.85–0.88.
+
+### Reading
+
+1. **The follow-up does not rescue Gate 2.**
+   - **Size:** the one testable process, diffusion, fails. The model is *significantly
+     worse* than holding the frame at +24.
+   - **Exponent:** reaction now passes (0.414) and diffusion fails (0.218). This is the
+     reverse of the 10-frame Gate-2 run.
+   - So neither run passes both growth modes, and the per-process exponents are not stable
+     across horizons.
+2. **The failure is the rollout, not the encoder or the probes.**
+   - The floor stays sharp to +24 (F1 ≥ 0.85, size distance 1.8–3.3 px), so the frozen
+     features and probes still carry the physics that far out.
+   - The model's forecasts **fade**: probed count and peak occupancy fall steadily, and
+     particles drop out.
+   - This is what a deterministic L1-trained forecaster does when it averages uncertain
+     futures, made worse by training on only 2 rollout steps.
+   - The huge +24 size distances (up to 17 px) are mostly this fading, not wrong sizes.
+     With few particles left, the area/count ratio stops being consistent, and the spread
+     (sd) derived from it blows up. The probed mean radius stays within ~2 px of the floor.
+3. **The +10 spurious static growth is blur, as suspected.**
+   - On static clips the probed radius rises above the floor up to +10 (13.1 vs 12.5 px)
+     while count and peak occupancy fall. That is the blur signature.
+   - It then falls again by +24 as particles vanish, which is why the 24-frame static
+     exponent is ≈ 0.
+   - So neither exponent window measures growth cleanly: rollout artefacts dominate both.
+4. **There is a real process-dependent signal underneath.**
+   - Over 24 frames the model ranks reaction (0.41) > diffusion (0.22) > static (0.01), as
+     the truth does (0.50 > 0.33 > 0), and gets static right.
+   - The predictor tells growth modes apart from 8 context frames. It cannot keep its
+     forecasts on the feature manifold long enough for the probes to read them reliably.
+5. **Exploratory only, not a test.** With these early-clip snippets, diffusion at +10 is
+   closer to the floor (model 1.78, persistence 2.32, floor 1.72), because sizes change
+   fastest early in a clip. Reaction at +10 is not (2.71 / 2.50 / 1.64).
+
+**Status:** Gate 2 stays **FAIL**. The diagnosis is that the predictor's forecasts fade
+beyond ~+5, which in PLAN's terms is "how error grows with horizon". The latent space and
+the probes are not the cause.
+
 ## Next
 
-These follow the FAIL branch of `PLAN.md` (systematic debugging) and are not done yet:
-
-- **Give the size test power.** Roll out to +24 (the window allows 8 + 24 latent frames),
-  so that size change exceeds probe error. Then compare model and persistence *relative to
-  the floor*. Fix that criterion in `PLAN.md` before running it, labelled as post hoc.
-- **Separate blur from physics in the exponent.** Subtract each snippet's static-clip
-  offset, or check whether probed count drops while radius rises on static forecasts.
-- **Add bootstrap CIs over test clips** to the headline numbers.
+- **predictor-v2: train on a longer rollout** (`--rollout 8`, already a flag of
+  `train_predictor.py`), so the model is penalised for fading. Then rerun Gate 2 and the
+  follow-up unchanged. A result for v2 is a new attempt and must be reported as such next
+  to v1's FAIL.
 - **The money plots** (size distribution at +10, growth curve against r ∝ t^⅓) are still
   open.
