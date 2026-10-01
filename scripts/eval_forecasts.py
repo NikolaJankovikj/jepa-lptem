@@ -143,6 +143,8 @@ def score_method(probes, latents, truth: dict, device: str) -> dict:
         for c, g in zip(cents, truth["pos"], strict=True)
     ]
     return {
+        "obs": obs,
+        "peak_occ": occ.reshape(len(occ), -1).max(axis=1),
         "count_err": np.abs(obs[:, 0] - truth["obs"][:, 0]),
         "meanr_err": np.abs(obs[:, 1] - truth["obs"][:, 1]),
         "w2": np.array([
@@ -206,7 +208,9 @@ def horizon_summary(rows: list[dict], method: str, h: int) -> dict:
         "mean_radius_mae": float(np.mean([p["meanr_err"][i] for p in parts])),
         "det_f1": 2 * tp / max(n_pred + n_gt, 1),
         # nan, not 0, when nothing matched: no detections is not a perfect position
-        "pos_err_px": float(sum(p["dist_sum"][i] for p in parts) / tp) if tp else float("nan"),
+        "pos_err_px": float(sum(p["dist_sum"][i] for p in parts) / tp)
+        if tp
+        else float("nan"),
     }
 
 
@@ -246,6 +250,7 @@ def pooled_msd(frames_list, records, memory: int) -> dict:
     """One source's pooled MSD/4Dt; a window the linker cannot resolve is dropped
     and shows up as ``msd_windows_used`` falling short."""
     from trackpy.linking.utils import SubnetOversizeException
+
     results = []
     for frames, r in zip(frames_list, records, strict=True):
         try:
@@ -259,8 +264,11 @@ def msd_summary(records: list[dict]) -> dict:
     """Pooled MSD/4Dt per method over the forecast frames; GT centroids as ceiling."""
     sources = {m: [r["methods"][m]["centroids"] for r in records] for m in METHODS}
     sources["ceiling"] = [r["truth"]["pos"] for r in records]
-    return {f"{name}/memory{memory}": pooled_msd(frames_list, records, memory)
-            for memory in (LINK_MEMORY, 0) for name, frames_list in sources.items()}
+    return {
+        f"{name}/memory{memory}": pooled_msd(frames_list, records, memory)
+        for memory in (LINK_MEMORY, 0)
+        for name, frames_list in sources.items()
+    }
 
 
 def process_verdict(entry: dict) -> dict:
@@ -268,23 +276,37 @@ def process_verdict(entry: dict) -> dict:
     vs context mean, reported), and the exponent where the process has one."""
     w2 = {m: entry[m][f"+{VERDICT_HORIZON}"]["w2"] for m in METHODS}
     true_exp, model_exp = entry["true_exponent"], entry["model"]["exponent"]["median"]
-    exp_pass = (None if true_exp is None
-                else model_exp is not None and abs(model_exp - true_exp) <= EXPONENT_TOL)
-    return {"w2": w2, "w2_vs_persistence": 1 - w2["model"] / w2["persistence"],
-            "w2_vs_ctxmean": 1 - w2["model"] / w2["ctxmean"],
-            "w2_pass": w2["model"] <= (1 - W2_MARGIN) * w2["persistence"],
-            "true_exponent": true_exp, "model_exponent": model_exp,
-            "floor_exponent": entry["floor"]["exponent"]["median"], "exponent_pass": exp_pass}
+    exp_pass = (
+        None
+        if true_exp is None
+        else model_exp is not None and abs(model_exp - true_exp) <= EXPONENT_TOL
+    )
+    return {
+        "w2": w2,
+        "w2_vs_persistence": 1 - w2["model"] / w2["persistence"],
+        "w2_vs_ctxmean": 1 - w2["model"] / w2["ctxmean"],
+        "w2_pass": w2["model"] <= (1 - W2_MARGIN) * w2["persistence"],
+        "true_exponent": true_exp,
+        "model_exponent": model_exp,
+        "floor_exponent": entry["floor"]["exponent"]["median"],
+        "exponent_pass": exp_pass,
+    }
 
 
 def verdict(summary: dict) -> dict:
     """The pre-registered Gate-2 test at +5 on the physics stratum. ``PASS`` is None
     when a verdict process has no test snippets (only in smoke runs)."""
-    out = {proc: process_verdict(summary[proc]) for proc in VERDICT_PROCESSES if proc in summary}
+    out = {
+        proc: process_verdict(summary[proc])
+        for proc in VERDICT_PROCESSES
+        if proc in summary
+    }
     if len(out) < len(VERDICT_PROCESSES):
         out["PASS"] = None
         return out
-    out["PASS"] = all(v["w2_pass"] and v["exponent_pass"] is not False for v in out.values())
+    out["PASS"] = all(
+        v["w2_pass"] and v["exponent_pass"] is not False for v in out.values()
+    )
     return out
 
 
@@ -295,9 +317,13 @@ def print_metric(summary: dict, title: str, key: str, fmt: str = ".2f") -> None:
     """One table: per process, every method at every report horizon."""
     print(f"\n{title}, physics stratum ({' / '.join(METHODS)}):")
     for proc, e in summary.items():
-        print(f"  {proc:12s} " + "   ".join(
-            f"+{h}: " + " / ".join(format(e[m][f"+{h}"][key], fmt) for m in METHODS)
-            for h in REPORT_HORIZONS))
+        print(
+            f"  {proc:12s} "
+            + "   ".join(
+                f"+{h}: " + " / ".join(format(e[m][f"+{h}"][key], fmt) for m in METHODS)
+                for h in REPORT_HORIZONS
+            )
+        )
 
 
 def print_report(summary: dict, msd: dict, gate: dict) -> None:
@@ -306,29 +332,48 @@ def print_report(summary: dict, msd: dict, gate: dict) -> None:
     print_metric(summary, "matched position error (px)", "pos_err_px", ".1f")
     print("\ngrowth exponent (median over snippets): model / floor / GT-in-crop / true")
     for proc, e in summary.items():
-        vals = [e["model"]["exponent"]["median"], e["floor"]["exponent"]["median"],
-                e["gt_crop_exponent"]["median"], e["true_exponent"]]
-        print(f"  {proc:12s} " + " / ".join("-" if v is None else f"{v:.3f}" for v in vals))
-    print(f"\nMSD/4Dt pooled (memory {LINK_MEMORY}): " + "  ".join(
-        f"{m} {msd[f'{m}/memory{LINK_MEMORY}']['msd_ratio_pooled']:.3f}"
-        for m in (*METHODS, "ceiling")))
-    print("  (meaningful for floor and ceiling only: a deterministic forecast predicts the\n"
-          "   expected position, which does not diffuse; held frames minus the known drift\n"
-          "   move ballistically, and the lag-averaged ratio of that can land near 1)")
+        vals = [
+            e["model"]["exponent"]["median"],
+            e["floor"]["exponent"]["median"],
+            e["gt_crop_exponent"]["median"],
+            e["true_exponent"],
+        ]
+        print(
+            f"  {proc:12s} "
+            + " / ".join("-" if v is None else f"{v:.3f}" for v in vals)
+        )
+    print(
+        f"\nMSD/4Dt pooled (memory {LINK_MEMORY}): "
+        + "  ".join(
+            f"{m} {msd[f'{m}/memory{LINK_MEMORY}']['msd_ratio_pooled']:.3f}"
+            for m in (*METHODS, "ceiling")
+        )
+    )
+    print(
+        "  (meaningful for floor and ceiling only: a deterministic forecast predicts the\n"
+        "   expected position, which does not diffuse; held frames minus the known drift\n"
+        "   move ballistically, and the lag-averaged ratio of that can land near 1)"
+    )
     print_verdict(gate)
 
 
 def print_verdict(gate: dict) -> None:
-    label = {True: "PASS", False: "FAIL", None: "not judgeable (a verdict process is missing)"}
+    label = {
+        True: "PASS",
+        False: "FAIL",
+        None: "not judgeable (a verdict process is missing)",
+    }
     print(f"\nGATE 2 (+{VERDICT_HORIZON}, physics): {label[gate['PASS']]}")
     for proc in VERDICT_PROCESSES:
         g = gate.get(proc)
         if g is None:
             print(f"  {proc:12s} no test snippets")
             continue
-        print(f"  {proc:12s} size dist {g['w2_vs_persistence']:+.1%} vs persistence "
-              f"({'pass' if g['w2_pass'] else 'fail'}), {g['w2_vs_ctxmean']:+.1%} vs ctx-mean; "
-              f"exponent {g['exponent_pass']}")
+        print(
+            f"  {proc:12s} size dist {g['w2_vs_persistence']:+.1%} vs persistence "
+            f"({'pass' if g['w2_pass'] else 'fail'}), {g['w2_vs_ctxmean']:+.1%} vs ctx-mean; "
+            f"exponent {g['exponent_pass']}"
+        )
 
 
 def load_predictor(path: Path, device: str):
