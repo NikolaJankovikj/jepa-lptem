@@ -84,3 +84,12 @@ def test_size_test_is_untestable_when_the_floor_has_no_edge():
     powered = size_test(persist, persist - 0.5 + noise, persist - 1.0 + noise, clips)
     assert powered["powered"] and powered["pass"] is True
     assert abs(powered["gap_closed"] - 0.5) < 0.1
+
+
+def test_token_cosine_is_per_frame_and_scale_free():
+    from leak_check import token_cosine
+
+    a = np.random.default_rng(0).normal(size=(3, S, D)).astype(np.float16)
+    assert np.allclose(token_cosine(a, 2 * a), 1.0, atol=1e-3)
+    assert np.allclose(token_cosine(a, -a), -1.0, atol=1e-3)
+    assert token_cosine(a, a).shape == (3,)

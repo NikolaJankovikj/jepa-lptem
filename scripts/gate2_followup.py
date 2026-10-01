@@ -77,8 +77,9 @@ def size_test(w2_persist, w2_model, w2_floor, clips) -> dict:
     }
 
 
-def collect(cache, test, predictor, probes) -> list[dict]:
-    """Score every physics-stratum test window: one snippet, 8 context + 24 future."""
+def collect(cache, test, predictor, probes, contexts=None) -> list[dict]:
+    """Score every physics-stratum test window: one snippet, 8 context + 24 future.
+    ``contexts`` (window index -> context latents) replaces the cached context."""
     model, stats, ctx = predictor
     device = str(next(model.parameters()).device)
     records = []
@@ -86,6 +87,9 @@ def collect(cache, test, predictor, probes) -> list[dict]:
         feats, pos, rad, meta = cache.load(i)
         if meta["stratum"] != "physics":
             continue
+        if contexts is not None:
+            feats = feats.copy()
+            feats[:ctx] = contexts[i]
         truth = snippet_truth(pos, rad, meta, np.arange(ctx, ctx + HORIZON))
         futures = forecasts(model, feats, 0, ctx, HORIZON, stats)
         methods = {

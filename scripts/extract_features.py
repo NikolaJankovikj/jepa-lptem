@@ -131,6 +131,25 @@ def save_atomic(path: Path, **arrays) -> None:
     os.replace(partial, path)
 
 
+def make_encoder(device: str):
+    """The frozen encoder as a function: ``(T, crop, crop)`` uint8 frames -> fp16
+    features ``(T / TUBELET, 256, D)``."""
+    import torch
+    from transformers import VJEPA2Model
+
+    model = VJEPA2Model.from_pretrained(MODEL_NAME).eval().to(device)
+    processor = load_processor()
+
+    def encode(win: np.ndarray) -> np.ndarray:
+        rgb = np.repeat(win[..., None], 3, axis=-1)
+        inp = processor(list(rgb), return_tensors="pt").to(device)
+        with torch.no_grad():
+            h = model(**inp).last_hidden_state  # (1, T_lat*256, D)
+        return h.reshape(len(win) // TUBELET, 256, -1).half().cpu().numpy()
+
+    return encode
+
+
 def extract_clip(path: Path, args, encode) -> int:
     """Encode every not-yet-cached window of one clip; returns windows written.
 
@@ -188,20 +207,7 @@ def main() -> None:
     args = ap.parse_args()
     k, n = map(int, args.shard.split("/"))
 
-    import torch
-    from transformers import VJEPA2Model
-
-    device = pick_device()
-    model = VJEPA2Model.from_pretrained(MODEL_NAME).eval().to(device)
-    processor = load_processor()
-
-    def encode(win: np.ndarray) -> np.ndarray:
-        rgb = np.repeat(win[..., None], 3, axis=-1)
-        inp = processor(list(rgb), return_tensors="pt").to(device)
-        with torch.no_grad():
-            h = model(**inp).last_hidden_state  # (1, T_lat*256, D)
-        return h.reshape(len(win) // TUBELET, 256, -1).half().cpu().numpy()
-
+    encode = make_encoder(pick_device())
     clips = sorted(glob.glob(str(args.data / "clip_*.npz")))[k::n]
     args.out.mkdir(parents=True, exist_ok=True)
     n_windows = sum(extract_clip(Path(f), args, encode) for f in clips)
