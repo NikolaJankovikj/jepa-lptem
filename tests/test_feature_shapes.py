@@ -68,3 +68,18 @@ def test_encoder_shape_64_frames():
     with torch.no_grad():
         out = model(**proc(list(vid), return_tensors="pt").to("cuda"))
     assert out.last_hidden_state.shape == (1, 32 * 16 * 16, 1024)
+
+
+@pytest.mark.gpu
+def test_per_frame_latents_see_only_their_own_tubelet():
+    from extract_features import make_encoder, pick_device
+
+    encode = make_encoder(pick_device(), per_frame=True)
+    frames = np.random.default_rng(0).integers(0, 255, (6, 256, 256), dtype=np.uint8)
+    whole = encode(frames).astype(np.float32)
+    changed = frames.copy()
+    changed[4:] = 255 - changed[4:]  # alter only the last tubelet
+    after = encode(changed).astype(np.float32)
+    assert whole.shape == (6 // TUBELET, 256, 1024)
+    assert np.allclose(whole[:2], after[:2], atol=1e-2)  # earlier latents untouched
+    assert not np.allclose(whole[2], after[2], atol=1e-2)

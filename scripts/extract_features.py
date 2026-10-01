@@ -131,9 +131,15 @@ def save_atomic(path: Path, **arrays) -> None:
     os.replace(partial, path)
 
 
-def make_encoder(device: str):
+def make_encoder(device: str, per_frame: bool = False):
     """The frozen encoder as a function: ``(T, crop, crop)`` uint8 frames -> fp16
-    features ``(T / TUBELET, 256, D)``."""
+    features ``(T / TUBELET, 256, D)``.
+
+    ``per_frame`` encodes every tubelet (2 frames) as its own clip, so no latent
+    frame sees any other -- in particular none sees the future. A whole-window pass
+    lets every latent attend to all 64 frames, which leaks the future into a
+    forecaster's context (``scripts/leak_check.py``). V-JEPA 2-AC encodes frames
+    independently for the same reason."""
     import torch
     from transformers import VJEPA2Model
 
@@ -142,9 +148,11 @@ def make_encoder(device: str):
 
     def encode(win: np.ndarray) -> np.ndarray:
         rgb = np.repeat(win[..., None], 3, axis=-1)
-        inp = processor(list(rgb), return_tensors="pt").to(device)
+        video = processor(list(rgb), return_tensors="pt")["pixel_values_videos"]
+        if per_frame:  # (1, T, C, H, W) -> (T / TUBELET, TUBELET, C, H, W)
+            video = video.reshape(-1, TUBELET, *video.shape[2:])
         with torch.no_grad():
-            h = model(**inp).last_hidden_state  # (1, T_lat*256, D)
+            h = model(pixel_values_videos=video.to(device)).last_hidden_state
         return h.reshape(len(win) // TUBELET, 256, -1).half().cpu().numpy()
 
     return encode
@@ -187,7 +195,9 @@ def extract_clip(path: Path, args, encode) -> int:
             features=feats,
             positions=pos,
             radii=rad,
-            meta=json.dumps(window_meta(z, stem, start, args.crop)),
+            meta=json.dumps(
+                {**window_meta(z, stem, start, args.crop), "per_frame": args.per_frame}
+            ),
         )
     return len(todo)
 
@@ -204,10 +214,15 @@ def main() -> None:
         default="0/1",
         help="K/N: take every N-th clip starting at K -- one shard per GPU",
     )
+    ap.add_argument(
+        "--per-frame",
+        action="store_true",
+        help="encode each 2-frame tubelet alone: no latent frame sees the future",
+    )
     args = ap.parse_args()
     k, n = map(int, args.shard.split("/"))
 
-    encode = make_encoder(pick_device())
+    encode = make_encoder(pick_device(), args.per_frame)
     clips = sorted(glob.glob(str(args.data / "clip_*.npz")))[k::n]
     args.out.mkdir(parents=True, exist_ok=True)
     n_windows = sum(extract_clip(Path(f), args, encode) for f in clips)
