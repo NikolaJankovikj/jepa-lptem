@@ -22,13 +22,19 @@ THRESHOLDS = np.round(np.arange(0.30, 1.00, 0.05), 2)  # searched on val
 MIN_FULL_TRACKS = 2  # an ensemble MSD needs more than one track
 
 
-def match_count(pred: np.ndarray, gt: np.ndarray, tol: float) -> int:
-    """True positives: one-to-one pairs of detections and GT closer than ``tol``."""
+def match_distances(pred: np.ndarray, gt: np.ndarray, tol: float) -> np.ndarray:
+    """Distances of the one-to-one detection/GT pairs closer than ``tol``."""
     if len(pred) == 0 or len(gt) == 0:
-        return 0
+        return np.zeros(0)
     dist = cdist(pred, gt)
     rows, cols = linear_sum_assignment(dist)
-    return int((dist[rows, cols] < tol).sum())
+    paired = dist[rows, cols]
+    return paired[paired < tol]
+
+
+def match_count(pred: np.ndarray, gt: np.ndarray, tol: float) -> int:
+    """True positives: one-to-one pairs of detections and GT closer than ``tol``."""
+    return len(match_distances(pred, gt, tol))
 
 
 def decode_and_match(window, threshold: float):
