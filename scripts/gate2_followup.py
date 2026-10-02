@@ -28,15 +28,15 @@ import numpy as np
 from eval_forecasts import (
     EXPONENT_TOL,
     METHODS,
-    THRESHOLD,
     VERDICT_PROCESSES,
     forecasts,
     horizon_summary,
+    load_gate1,
     load_predictor,
     score_method,
     snippet_truth,
 )
-from gate1_secondary import load_probes, split_indices
+from gate1_secondary import split_indices
 from train_predictor import pick_device
 from train_probes import WindowCache
 
@@ -256,7 +256,7 @@ def print_report(by_process: dict) -> None:
     print_exponents(by_process)
     print_blur(by_process)
     print_by_horizon(
-        by_process, f"decoded-centroid F1 (threshold {THRESHOLD}) by horizon", "det_f1"
+        by_process, "decoded-centroid F1 (Gate-1 threshold) by horizon", "det_f1"
     )
 
 
@@ -273,15 +273,14 @@ def main() -> None:
     device = pick_device()
     cache = WindowCache(args.features)
     test = split_indices(cache, args.gate1 / "metrics.json")["test"]
-    att, cen, norm = load_probes(args.gate1 / "probes.pt")
+    probes = load_gate1(args.gate1, device)
     predictor = load_predictor(args.predictor, device)
     print(
-        f"test windows {len(test)}  device {device}  ctx {predictor[2]}  horizon {HORIZON}  (post hoc)"
+        f"test windows {len(test)}  device {device}  ctx {predictor[2]}  horizon {HORIZON}"
+        f"  threshold {probes[3]}  (post hoc)"
     )
 
-    by_process = analyse(
-        collect(cache, test, predictor, (att.to(device), cen.to(device), norm))
-    )
+    by_process = analyse(collect(cache, test, predictor, probes))
     print_report(by_process)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "followup.json").write_text(

@@ -13,6 +13,7 @@ from eval_forecasts import (
     forecasts,
     gaussian_w2,
     gt_moments,
+    load_gate1,
     moments_from_observables,
     snippet_exponent,
 )
@@ -93,3 +94,22 @@ def test_token_cosine_is_per_frame_and_scale_free():
     assert np.allclose(token_cosine(a, 2 * a), 1.0, atol=1e-3)
     assert np.allclose(token_cosine(a, -a), -1.0, atol=1e-3)
     assert token_cosine(a, a).shape == (3,)
+
+
+def test_load_gate1_takes_the_threshold_that_run_picked(tmp_path):
+    """A Gate-1 run on another cache picks its own cut; Gate 2 must decode with it."""
+    import json
+
+    from jepa_lptem.eval.centroid_eval import GRID
+    from jepa_lptem.eval.probes import AttentiveProbe, CentroidProbe
+
+    torch.save(
+        {
+            "attentive": AttentiveProbe(out_dim=3).state_dict(),
+            "centroid": CentroidProbe(grid=GRID).state_dict(),
+            "norm": (np.zeros(3), np.ones(3)),
+        },
+        tmp_path / "probes.pt",
+    )
+    (tmp_path / "metrics.json").write_text(json.dumps({"val": {"threshold": 0.9}}))
+    assert load_gate1(tmp_path, "cpu")[3] == 0.9

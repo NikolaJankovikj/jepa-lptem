@@ -38,7 +38,6 @@ from jepa_lptem.eval.probes import AttentiveProbe, CentroidProbe
 FINE_THRESHOLDS = np.round(
     np.concatenate([np.arange(0.30, 0.90, 0.05), np.arange(0.90, 0.995, 0.01)]), 2
 )
-PREREGISTERED_THRESHOLD = 0.95  # what the headline run picked (its grid edge)
 MEMORIES = (0, 1, 2)
 EDGE_MARGIN_PX = 16.0  # one token cell
 EDGE_BUCKETS = 4  # 0, 1, 2, 3+ straddling particles
@@ -90,10 +89,10 @@ def collect(cache: WindowCache, idx, probes) -> list[dict]:
     return records
 
 
-def detection_and_msd(val_records, test_records) -> dict:
+def detection_and_msd(val_records, test_records, headline_threshold: float) -> dict:
     picked = pick_threshold((r["window"] for r in val_records), FINE_THRESHOLDS)
     out = {"val_picked_threshold": picked}
-    for label, th in (("preregistered", PREREGISTERED_THRESHOLD), ("fine_grid", picked)):
+    for label, th in (("preregistered", headline_threshold), ("fine_grid", picked)):
         for memory in MEMORIES:
             m = eval_centroid_msd((r["window"] for r in test_records), th, memory)
             out[f"{label}_memory{memory}"] = m
@@ -167,7 +166,9 @@ def main() -> None:
     val_records = collect(cache, idx["val"], probes)
     test_records = collect(cache, idx["test"], probes)
 
-    results = {"detection_msd": detection_and_msd(val_records, test_records),
+    # the threshold the headline run picked on val, not a constant: each cache picks its own
+    headline = json.loads((args.gate1 / "metrics.json").read_text())["val"]["threshold"]
+    results = {"detection_msd": detection_and_msd(val_records, test_records, headline),
                "count_by_edge": count_by_edge(test_records),
                "r2_by_process": r2_by_process(test_records)}
     out = args.gate1 / "secondary.json"

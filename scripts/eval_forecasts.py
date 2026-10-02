@@ -20,7 +20,7 @@ Scored against the ground truth at the same future frame, at +1, +5, +10:
     any Gate-2 number existed.
 (b) **growth exponent** -- log-log slope of probed mean radius against the clip's
     physical time over the 10 forecast frames, median per process.
-(c) **positions** -- decoded centroids (Gate-1 threshold 0.95) matched to GT: F1 and
+(c) **positions** -- decoded centroids (the Gate-1 run's val-picked threshold) matched to GT: F1 and
     mean matched distance. Brownian position is a martingale, so the best possible
     forecast is the current position plus drift: parity with persistence is the
     expected, correct result. Drift-removed MSD/4Dt of tracks linked with gap closing
@@ -60,7 +60,6 @@ HORIZON = 10
 REPORT_HORIZONS = (1, 5, 10)
 SNIPPETS_PER_WINDOW = 3
 METHODS = ("model", "persistence", "ctxmean", "floor")
-THRESHOLD = 0.95  # the Gate-1 val-picked occupancy threshold
 LINK_MEMORY = 2  # fixed in PLAN Step 10 before any Gate-2 number
 VERDICT_HORIZON = 5
 VERDICT_PROCESSES = ("diffusion", "reaction", "ripening")
@@ -120,9 +119,20 @@ def forecasts(
 # ------------------------------- scoring ---------------------------------------
 
 
+def load_gate1(gate1_dir: Path, device: str):
+    """The frozen Gate-1 probes plus the occupancy threshold that run picked on val.
+
+    The threshold is read, never hardcoded: a Gate-1 run on a different cache
+    (e.g. ``--per-frame``) picks its own, and decoding with another run's cut
+    would grade its probes at the wrong operating point."""
+    att, cen, norm = load_probes(gate1_dir / "probes.pt")
+    threshold = json.loads((gate1_dir / "metrics.json").read_text())["val"]["threshold"]
+    return att.to(device), cen.to(device), norm, threshold
+
+
 def read_probes(probes, latents: np.ndarray, device: str):
     """Frozen Gate-1 probes on ``(H, S, D)`` latents -> observables, occupancy, offsets."""
-    att, cen, (mu, sd) = probes
+    att, cen, (mu, sd), _ = probes
     x = torch.from_numpy(latents.astype(np.float32)).to(device)
     with torch.no_grad():
         obs = att(x).cpu().numpy() * sd + mu
@@ -135,7 +145,7 @@ def score_method(probes, latents, truth: dict, device: str) -> dict:
     obs, occ, off = read_probes(probes, latents, device)
     cell = truth["cell"]
     cents = [
-        decode_centroids(occ[h], off[h], threshold=THRESHOLD, cell_size=cell)
+        decode_centroids(occ[h], off[h], threshold=probes[3], cell_size=cell)
         for h in range(len(obs))
     ]
     dists = [
@@ -405,10 +415,12 @@ def main() -> None:
     device = pick_device()
     cache = WindowCache(args.features)
     test = split_indices(cache, args.gate1 / "metrics.json")["test"]
-    att, cen, norm = load_probes(args.gate1 / "probes.pt")
-    probes = (att.to(device), cen.to(device), norm)
+    probes = load_gate1(args.gate1, device)
     model, stats, ctx = load_predictor(args.predictor, device)
-    print(f"test windows {len(test)}  device {device}  ctx {ctx}  horizon {HORIZON}")
+    print(
+        f"test windows {len(test)}  device {device}  ctx {ctx}  horizon {HORIZON}"
+        f"  threshold {probes[3]}"
+    )
 
     records = [
         rec

@@ -28,9 +28,15 @@ import json
 from pathlib import Path
 
 import numpy as np
-from eval_forecasts import horizon_summary, load_predictor, score_method, snippet_truth
+from eval_forecasts import (
+    horizon_summary,
+    load_gate1,
+    load_predictor,
+    score_method,
+    snippet_truth,
+)
 from extract_features import TUBELET, make_encoder
-from gate1_secondary import load_probes, split_indices
+from gate1_secondary import split_indices
 from gate2_followup import analyse, collect, print_report
 from train_predictor import pick_device
 from train_probes import WindowCache
@@ -108,8 +114,7 @@ def main() -> None:
         for i in split_indices(cache, args.gate1 / "metrics.json")["test"]
         if cache.meta[i]["stratum"] == "physics"
     ]
-    att, cen, norm = load_probes(args.gate1 / "probes.pt")
-    probes = (att.to(device), cen.to(device), norm)
+    probes = load_gate1(args.gate1, device)
     predictor = load_predictor(args.predictor, device)
     ctx = predictor[2]
     encode = make_encoder(device)
