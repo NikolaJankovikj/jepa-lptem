@@ -145,11 +145,11 @@ def r2_by_process(test_records) -> dict:
     return out
 
 
-def split_indices(cache: WindowCache, metrics_path: Path) -> dict:
-    """The headline run's own val/test windows, from the split it recorded."""
+def split_indices(cache: WindowCache, metrics_path: Path, parts=("val", "test")) -> dict:
+    """The headline run's own windows per split, from the split it recorded."""
     split = json.loads(metrics_path.read_text())["split"]
     return {part: [i for i, m in enumerate(cache.meta) if m["clip"] in set(split[part])]
-            for part in ("val", "test")}
+            for part in parts}
 
 
 def main() -> None:
