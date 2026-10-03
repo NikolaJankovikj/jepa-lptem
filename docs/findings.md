@@ -46,9 +46,8 @@ JSON files, which were re-checked against each other. Each section links its sou
     uses the same encoder for its world model: V-JEPA 2-AC "encode[s] each frame
     independently" (V-JEPA 2 paper, §AC).
   - On the leak figure, swapping the future changes per-frame context features by exactly 0.
-  - **Still to confirm on the full cache:** `logs/pf-audit.log` on the PC should show
-    cosine 1.000 between overlapping windows on shared frames. The whole-window cache gave
-    0.786.
+  - **Confirmed on the full cache** (`logs/pf-audit.log`): overlapping windows agree at
+    cosine 1.000 on shared frames. The whole-window cache gave 0.786.
 
 ### 2b. Gate 2's size criterion had no power: our pre-registration error
 
@@ -168,7 +167,7 @@ the fallback. LoRA moves back to what it was best suited for: the sim-to-real st
 
 ## Open items
 
-- [ ] Sync `logs/pf-audit.log`, `logs/pf-gate1.log` (provenance and convergence).
+- [x] Provenance (`logs/pf-audit.log`): cos 1.000 on shared frames — the cache is per-frame.
 - [x] `gate1_secondary.py --gate1 experiments/gate1-perframe` (2026-10-03): count loss is uniform across edge buckets, largest on reaction / ripening.
 - [x] Decided 2026-10-02: A + B now; V-JEPA 2.1 next as encoder candidate; LoRA planned, timing open (`PLAN.md` Step 8).
 - [ ] Superseded notes on the docs that still quote v1 as evidence of learned dynamics

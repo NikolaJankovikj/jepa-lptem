@@ -98,8 +98,19 @@ per-frame probe sits 2–3 % above it, with fewer tracks.
 - Not tested directly: count error split by particle size.
 - Diffusion still passes comfortably. The MSD bias is known-sign and small.
 
-## Open
+## Cache audit (provenance)
 
-- The cache audit (`logs/pf-audit.log`) has not been synced back yet. It is the provenance
-  check that this run read per-frame features: overlapping windows should agree at cosine
-  1.000 on shared frames (the whole-window cache gave 0.786).
+`scripts/audit_features.py` on the per-frame cache (`logs/pf-audit.log`, not in git):
+
+| check | per-frame | whole-window |
+|---|---|---|
+| windows, shape | 4000, (32, 256, 1024) | same |
+| non-finite / constant windows | 0 | 0 |
+| visible particles outside the crop | 0 | 0 |
+| cos, same frames in two windows | **1.000** | 0.786 |
+| cos, one latent step apart | 0.614 | 0.590 |
+| particle-centre token AUC (control, rolled 5) | 0.978 (0.534) | 0.979 (0.559) |
+
+- **The run read per-frame features.** A frame's latent is identical whichever window it
+  sits in, so no other frame reaches it.
+- Spatial decodability is unchanged.
