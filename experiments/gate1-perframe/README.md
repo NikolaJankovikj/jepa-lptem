@@ -42,10 +42,64 @@ Supporting numbers (test): R² total area 0.928 on the physics stratum (whole-wi
   on count: its sd is derived from area / (π · count). Gate-2 size numbers on this cache
   inherit the weaker count reading, so that has to be stated next to them.
 
+## Secondary analyses (2026-10-03)
+
+`scripts/gate1_secondary.py --gate1 experiments/gate1-perframe` (commit `6089333`: decodes
+at this run's own val threshold). Raw numbers are in `secondary.json`. They sit next to the
+verdict and do not change it. The whole-window numbers come from `experiments/gate1/`.
+
+**1. Count vs the crop edge (test, physics stratum).**
+
+| particles near the edge | frames | MAE per-frame | MAE whole-window | bias per-frame |
+|---|---|---|---|---|
+| 0 | 809 | 0.75 | 0.63 | +0.09 |
+| 1 | 1998 | 0.76 | 0.65 | −0.06 |
+| 2 | 2575 | 0.84 | 0.74 | −0.06 |
+| 3+ | 4730 | 1.01 | 0.91 | −0.27 |
+
+R² 0.741 with no edge particle (whole-window 0.829), 0.719 with one or more (0.800). The
+loss is **the same ~0.1 MAE in every bucket**, so the crop edge does not explain it.
+
+**2. Per process (test, all strata).**
+
+| process | R² count per-frame | whole-window | Δ | R² mean radius per-frame | whole-window |
+|---|---|---|---|---|---|
+| coalescence | 0.675 | 0.751 | −0.08 | 0.844 | 0.865 |
+| diffusion | 0.779 | 0.868 | −0.09 | 0.876 | 0.895 |
+| reaction | 0.700 | 0.832 | **−0.13** | 0.816 | 0.835 |
+| ripening | 0.715 | 0.827 | **−0.11** | 0.739 | 0.796 |
+| static | 0.774 | 0.830 | −0.06 | 0.916 | 0.927 |
+
+The merging process (coalescence) does not lose most. Reaction and ripening do: the
+processes with many small particles, growing from nucleation or dissolving toward the
+visibility floor.
+
+**3. Detection and MSD with gap closing (test).** The fine-grid val optimum is 0.96, just
+above the 0.30–0.95 grid used for the headline (whole-window: 0.95).
+
+| linking | MSD / 4Dt | ceiling | windows (probe / ceiling) | coverage |
+|---|---|---|---|---|
+| no gaps (headline) | 0.986 | 0.955 | 76 / 288 | 0.048 |
+| gaps ≤ 1 | 0.980 | 0.950 | 173 / 301 | 0.129 |
+| gaps ≤ 2 (Gate 2's linking) | 0.966 | 0.947 | 199 / 307 | 0.158 |
+
+The whole-window probe matched the ceiling to three decimals (0.950 / 0.948). The
+per-frame probe sits 2–3 % above it, with fewer tracks.
+
+**Reading.**
+- The whole-window guess for count (crop edge, merging) does **not** explain the
+  per-frame loss.
+- The pattern fits **noise**: a per-frame latent sees one frame pair's shot noise, and the
+  whole-window encoder averaged it over many frames.
+  - That hurts most where particles are small and faint (reaction, ripening).
+  - It adds independent position error to every detection. In tracking that raises the
+    MSD by a constant (MSD = 4Dτ + 4σ²), which is the excess over the ceiling seen here.
+  - Whole-window errors were correlated in time and cancelled out.
+- Not tested directly: count error split by particle size.
+- Diffusion still passes comfortably. The MSD bias is known-sign and small.
+
 ## Open
 
-- Cache audit (`logs/pf-audit.log`) not yet synced back. It is the provenance check that
-  this run read per-frame features: overlapping windows should agree at cosine 1.000 on
-  shared frames (the whole-window cache: 0.786).
-- `scripts/gate1_secondary.py --gate1 experiments/gate1-perframe` (CPU, ~15–30 min) to see
-  whether the count loss sits in the edge and coalescence buckets.
+- The cache audit (`logs/pf-audit.log`) has not been synced back yet. It is the provenance
+  check that this run read per-frame features: overlapping windows should agree at cosine
+  1.000 on shared frames (the whole-window cache gave 0.786).

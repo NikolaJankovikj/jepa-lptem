@@ -87,13 +87,21 @@ JSON files, which were re-checked against each other. Each section links its sou
 - Only one observable dropped, on both splits, by a similar amount (0.08 on test, 0.12 on
   val).
 
-**Why count, specifically:**
-- Gate 1's secondary analysis had already located count's errors: particles cut by the crop
-  edge, and touching or merging particles (count R² was lowest on coalescence, 0.75).
-- Both cases are ambiguous in one snapshot and become clear across several frames.
-- The whole-window encoder had up to 64 frames to resolve them. A per-frame latent has 2.
-- Some of the lost information was *past* frames, which is legitimate. Some was future
-  frames, which is not.
+**Why count, specifically.** My first guess was the crop edge and merging particles,
+where Gate 1 had located count's errors. The secondary analysis (B, 2026-10-03,
+`experiments/gate1-perframe/secondary.json`) **refutes that guess**:
+- **Not the edge.** Count error rises by the same ~0.1 MAE in every edge bucket, frames
+  with no edge particle included (0.63 → 0.75).
+- **Not merging.** Coalescence loses 0.08 R², about average. The largest losses are
+  **reaction (−0.13) and ripening (−0.11)**, the two processes with many *small* particles:
+  growing from nucleation, or dissolving toward the visibility floor. Static loses least
+  (−0.06). Ripening's mean radius drops most too (0.80 → 0.74).
+- **Reading:** a per-frame latent sees one dose of shot noise. The whole-window encoder
+  averaged it over many frames, which made small, faint particles countable. So count is
+  lost to **noise at small sizes**, not to geometric ambiguity. Untested directly: it would
+  need count error split by particle size.
+- Some of that averaging used *past* frames, which is legitimate. Some used future frames,
+  which is not.
 
 **What is our doing:**
 - **The probe reads one latent frame at a time.** That was fine when every latent had
@@ -126,7 +134,9 @@ JSON files, which were re-checked against each other. Each section links its sou
 As pre-registered, a Gate-1 FAIL makes LoRA (Step 8) the main path. That rule was written
 to answer one question: are frozen features able to represent LPTEM physics at all? On
 per-frame features the answer is "yes, except count". Count's shortfall points at
-**single-frame ambiguity**, which LoRA's training objective does not target. Any deviation
+**noise on small particles in a single frame** (section 2d). Averaging over past frames
+(D), better dense features (C) and adapting to LPTEM's noise (LoRA) all plausibly
+address it. Any deviation
 from the rule must be written into `PLAN.md`, dated, before the next result is seen.
 
 | Path | Cost | What it answers | Fixes count? |
@@ -134,8 +144,8 @@ from the rule must be written into `PLAN.md`, dated, before the next result is s
 | **A. Stage 2 on the per-frame cache** (predictor from scratch, Gate 2, follow-up) | ~7 h, 1 GPU, ready to launch | The core thesis question on honest features: does a latent predictor learn growth physics? | No. Size numbers carry the weak count |
 | **B. Diagnostics** (`gate1_secondary.py`, audit log) | ~30 min CPU | Where count is lost (edge vs coalescence vs density); confirms the cache is per-frame | Locates it |
 | **C. V-JEPA 2.1 ViT-L, frozen, per-frame** | Loader via `torch.hub` (not in HF transformers), ~1 day all in | Whether a better frozen dense encoder lifts count. Same size as now (300 M) | Plausibly. Built for single-frame dense features |
-| **D. Past-only sliding window** (encode frames t−15…t+1, keep the last tubelet) | ~6–8× the extraction compute, ~70 GB disk, ~1–2 days | Whether *past* temporal context recovers count without any leak | Plausibly, for merges and edges |
-| **E. LoRA** (Step 8) | 2–3 days per run, plus first getting Meta's training loop running (not started) | Whether domain adaptation helps; mainly the sim-to-real question (Step 13) | Unclear. Must also be trained per-frame to match how it is used |
+| **D. Past-only sliding window** (encode frames t−15…t+1, keep the last tubelet) | ~6–8× the extraction compute, ~70 GB disk, ~1–2 days | Whether *past* temporal context recovers count without any leak | Plausibly: it averages noise again, without the future |
+| **E. LoRA** (Step 8) | 2–3 days per run, plus first getting Meta's training loop running (not started) | Whether domain adaptation helps; mainly the sim-to-real question (Step 13) | Plausibly: it learns LPTEM's noise. Must also be trained per-frame to match how it is used |
 
 **Why A comes first whatever is chosen:** every encoder path ends with "train the predictor,
 run Gate 2", and A is that step on the encoder already in hand. If the predictor fails on
@@ -148,8 +158,8 @@ the fallback. LoRA moves back to what it was best suited for: the sim-to-real st
 ## 5. What the thesis can already say
 
 1. Frozen V-JEPA 2 features carry LPTEM physics. Size and diffusion are readable at
-   R² ≈ 0.9, and the MSD sits at the perfect-detector ceiling, *even with no temporal
-   context*.
+   R² ≈ 0.9, and the MSD is within 2–3 % of the perfect-detector ceiling, *even with no
+   temporal context*.
 2. Encoding whole clips leaks the future into a latent forecaster's context and fakes
    predictive skill. This has been measured, shown and fixed. It is a methodological
    warning anyone building latent world models on video encoders can use.
@@ -159,7 +169,7 @@ the fallback. LoRA moves back to what it was best suited for: the sim-to-real st
 ## Open items
 
 - [ ] Sync `logs/pf-audit.log`, `logs/pf-gate1.log` (provenance and convergence).
-- [ ] `gate1_secondary.py --gate1 experiments/gate1-perframe` on the PC.
+- [x] `gate1_secondary.py --gate1 experiments/gate1-perframe` (2026-10-03): count loss is uniform across edge buckets, largest on reaction / ripening.
 - [x] Decided 2026-10-02: A + B now; V-JEPA 2.1 next as encoder candidate; LoRA planned, timing open (`PLAN.md` Step 8).
 - [ ] Superseded notes on the docs that still quote v1 as evidence of learned dynamics
   (`README.md` status, `experiments/core/README.md`, `experiments/predictor-v1/README.md`).
