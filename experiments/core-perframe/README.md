@@ -112,13 +112,16 @@ By +24 **every process** reads alike: count about 4, radius 4.2–5.0 px, peak o
    does. But coalescence (+0.21) sits above both, so this is not evidence of growth
    physics.
 
+## Training check (2026-10-03)
+
+`experiments/predictor-perframe/README.md`:
+- The predictor converged (val L1 flat from epoch 30).
+- It beats the context mean by 4.2 % in feature space at +1, against 9.3 % for v1, the
+  same for every process.
+
+So the test set out above resolves it: **better in L1, worse in probe space. The cause is
+the objective, not the training.**
+
 ## Open
 
-- **predictor-perframe training numbers are not synced** (`history.json`,
-  `logs/pf-predictor.log`). Two things depend on them:
-  - whether the run converged;
-  - its feature-space gain over the context mean.
-
-  If it beats the context mean in L1 but loses in probe space, the cause is the objective,
-  not the training.
-- What next is a decision for `PLAN.md` Step 10, recorded before the next run.
+- What comes next is a decision for `PLAN.md` Step 10, recorded before the next run.
