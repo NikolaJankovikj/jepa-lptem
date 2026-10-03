@@ -162,8 +162,11 @@ the fallback. LoRA moves back to what it was best suited for: the sim-to-real st
 2. Encoding whole clips leaks the future into a latent forecaster's context and fakes
    predictive skill. This has been measured, shown and fixed. It is a methodological
    warning anyone building latent world models on video encoders can use.
-3. A Gate-2 FAIL whose cause is documented (a protocol with no power, forecasts that fade).
-   It has to be re-run on honest features before it means anything about dynamics.
+3. **On honest (per-frame) features, Gate 2 fails clearly** (2026-10-03,
+   `experiments/core-perframe/`). The deterministic predictor's forecasts dissolve within
+   about 5 steps and end up worse than holding the last frame. Meanwhile the true future
+   stays readable (the exponents are recovered to ±0.02). The bottleneck is the forecaster
+   and its objective, not the encoder or the probes.
 
 ## Open items
 
