@@ -167,6 +167,10 @@ the fallback. LoRA moves back to what it was best suited for: the sim-to-real st
    about 5 steps and end up worse than holding the last frame. Meanwhile the true future
    stays readable (the exponents are recovered to ±0.02). The bottleneck is the forecaster
    and its objective, not the encoder or the probes.
+   The forecast-trained readout (2026-10-04, `experiments/forecast-probe/`) settles which:
+   probes trained on the forecasts read them about as well as the last context frame, so
+   most of the fade was the frozen probes. But they find no growth beyond that frame. The
+   per-token L1 objective did not teach the trend, so the objective has to change.
 
 ## Open items
 
