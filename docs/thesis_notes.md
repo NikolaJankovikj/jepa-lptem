@@ -72,3 +72,20 @@ is dated; check its source before quoting.
   near chance. Supports the brief's argument for latent rather than pixel prediction.
 - **Novelty check (not exhaustive).** No JEPA work on microscopy, LPTEM or particle
   forecasting turned up in a search on 2026-10-11.
+
+## Results: the exponent shortfall is the context's, not the latent's (2026-10-11)
+
+- **The claim.** The label-free linear forecaster on the frame-averaged V-JEPA latent
+  recovers growth exponents as far as the context allows. Its context-8 shortfall
+  (0.19 / 0.24 against 1/3, 1/2) is set by 8 noisy frames, not by the latent.
+- **The numbers** (`experiments/longer-context/`, design A, same forecast frames at every
+  context): from context 8 to 16 its exponents rise +0.097 / +0.104 (paired, clip CIs
+  above 0), about the ground-truth ceiling's own rise (+0.087 / +0.106), to 0.287 / 0.340.
+  The gap to the ceiling stays 0.00–0.07. The +24 size gain over a population-level
+  growth trend grows from +0.22 / +0.29 px to +0.55 / +0.88 px. Static stays flat (≤ 0.014).
+- **The contrast.** A small causal transformer trained the same way matches the +24
+  size gain but its exponents barely move (+0.014 / +0.027, 16–25 % of the ceiling's
+  rise), and it invents growth on static clips. More capacity does not help; the
+  signal is linear in this latent.
+- **For the write-up.** Plot exponent against context length, with the ceiling curve and
+  the truth. State Gate 2′'s context-8 FAIL, then this as its explanation.
