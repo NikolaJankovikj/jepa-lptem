@@ -46,14 +46,15 @@ def gt_windows(n_per_process: int, seed: int) -> list[dict]:
     rng = np.random.default_rng(seed)
     rows = []
     for clip, process in enumerate(p for p in PROCESSES for _ in range(n_per_process)):
-        _, _, _, pos, rad = build_clip(
+        _, _, meta, pos, rad = build_clip(
             process, N_FRAMES, (FULL_SIZE, FULL_SIZE), rng
         )
         for start in STARTS:
             p, r = crop_and_align_gt(pos, rad, start, WINDOW, FULL_SIZE, CROP)
-            rows.append(
-                {"process": process, "clip": clip, "start": start, "pos": p, "rad": r}
-            )
+            rows.append({
+                "process": process, "clip": clip, "start": start, "pos": p, "rad": r,
+                "t0_growth": meta["t0_growth"], "dt_growth": meta["dt_growth"],
+            })
     return rows
 
 
