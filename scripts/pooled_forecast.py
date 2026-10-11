@@ -199,15 +199,15 @@ def w2_table(obs: dict, true_obs: np.ndarray, rows: np.ndarray) -> dict:
 def growth_test(
     radius: dict, truth: np.ndarray, rows: np.ndarray, clips: np.ndarray
 ) -> dict:
-    """On one process: the reference, whether the floor is powered over it, and each
-    candidate's and the readout ridge's paired gain at +24 with a clip CI."""
+    """On one process: the reference, whether the floor is powered over it, and every
+    other method's paired gain over it at +24 with a clip CI."""
     mae = {
         k: float(np.abs(radius[k][rows, -1] - truth[rows, -1]).mean())
         for k in REFERENCES
     }
     ref = min(mae, key=mae.get)
     out = {"reference": ref, "reference_mae_24": mae[ref]}
-    for method in ("floor", "readout_ridge", *CANDIDATES):
+    for method in (m for m in radius if m != ref):
         gain = paired_gain(radius, truth, rows, (ref, method))
         out[method] = {
             "gain": float(gain.mean()),
@@ -247,9 +247,6 @@ def verdict(tests: dict, exps: dict, candidate: str) -> dict:
     }
 
 
-CANDIDATES = ("linear",)
-
-
 def tables_by_process(obs: dict, radius: dict, targets: np.ndarray, rows_of: dict) -> dict:
     """Reported, not judged: mean-radius MAE (all methods) and Gaussian W2 (latent
     methods) per process and horizon. ``rows_of``: process -> test physics windows."""
@@ -259,10 +256,15 @@ def tables_by_process(obs: dict, radius: dict, targets: np.ndarray, rows_of: dic
     }
 
 
-def evaluate(readout: Readout, z: np.ndarray, ctx: dict) -> dict:
-    """Forecast, read and judge everything on the test physics windows."""
+def evaluate(readout: Readout, z: np.ndarray, ctx: dict, extra: dict | None = None) -> dict:
+    """Forecast, read and judge everything on the test physics windows. ``extra``:
+    further candidates' z-scored ``(W, 24, D)`` forecasts (P3), judged alike."""
     meta, targets = ctx["meta"], ctx["targets"]
     obs, radius, fit_info = observables(readout, z, ctx["split"], targets[..., RADIUS])
+    for name, forecast in (extra or {}).items():
+        obs[name] = read_z(readout, forecast)
+        radius[name] = obs[name][..., RADIUS]
+    candidates = ("linear", *(extra or {}))
     test = ctx["split"]["test"][ctx["physics"][ctx["split"]["test"]]]
     process = np.array([m["process"] for m in meta])
     rows_of = {p: test[process[test] == p] for p in sorted(set(process))}
@@ -274,7 +276,7 @@ def evaluate(readout: Readout, z: np.ndarray, ctx: dict) -> dict:
     return {
         "linear_fit": fit_info,
         "growth_test": tests,
-        "verdict": {c: verdict(tests, exps, c) for c in CANDIDATES},
+        "verdict": {c: verdict(tests, exps, c) for c in candidates},
         "exponents": exps,
     } | tables_by_process(obs, radius, targets, rows_of)
 
@@ -282,7 +284,7 @@ def evaluate(readout: Readout, z: np.ndarray, ctx: dict) -> dict:
 def print_growth_tests(result: dict) -> None:
     for p, t in result["growth_test"].items():
         print(f"\n{p}: reference {t['reference']} (MAE +24 {t['reference_mae_24']:.2f} px), powered {t['powered']}")
-        for m in ("floor", "readout_ridge", *CANDIDATES):
+        for m in ("floor", "readout_ridge", *result["verdict"]):
             g = t[m]
             print(f"    gain over reference, {m:14s} {g['gain']:+.2f} [{g['ci'][0]:+.2f}, {g['ci'][1]:+.2f}] px")
 

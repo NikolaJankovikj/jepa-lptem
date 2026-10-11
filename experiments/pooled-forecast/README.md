@@ -94,3 +94,48 @@ the growth *law* with the required precision. Next, as pre-registered: P3 (candi
 the small causal transformer), judged by the same Gate 2′. Whether the exponent
 criterion can be met from 8 frames at all deserves its own measured floor before any
 decision is drawn from it.
+
+---
+
+# P3: candidate B, the small causal transformer (2026-10-11)
+
+**Script:** `scripts/pooled_transformer.py` (test: `tests/test_pooled_transformer.py`) · same data, readout and Gate 2′ as P2 (`pooled_forecast.evaluate`) · **Compute:** Mac CPU, 127 s · `metrics_p3.json` (results + training history) is here; `transformer.pt` stays out of git; the run log is `logs/pooled-transformer.log`.
+
+Trained as pre-registered: 100 epochs, best val L1 at +24 at epoch 38 (0.484; 0.560 at
+epoch 1, 0.494 at epoch 100). The model is a change from the last context frame,
+zero-initialised, so it starts as persistence.
+
+| | linear (A) | **transformer (B)** | readout ridge | floor |
+|---|---|---|---|---|
+| gain over pooled trend at +24, diffusion | +0.42 [+0.15, +0.68] | **+0.54 [+0.30, +0.77]** | +0.73 | +1.34 |
+| gain over pooled trend at +24, reaction | +0.66 [+0.35, +0.98] | **+0.81 [+0.59, +1.03]** | +0.96 | +2.13 |
+| gap closed to readout ridge | 57 % / 68 % | **73 % / 84 %** | – | – |
+| exponent, diffusion / reaction | 0.208 / 0.269 | **0.180 / 0.245** | 0.272 / 0.337 | 0.311 / 0.473 |
+| exponent, static | 0.008 | **0.110** [0.100, 0.125] | 0.041 | 0.009 |
+| mean-radius MAE at +1, diffusion / reaction | 0.68 / 0.73 | 1.08 / 1.03 | 0.58 / 0.60 | 0.80 / 0.68 |
+
+Transformer minus linear at +24 (paired, reported): diffusion +0.12 [−0.18, +0.41],
+reaction +0.16 [−0.12, +0.43], static +0.02 [−0.32, +0.36]. No significant difference.
+
+**Verdict (candidate B): FAIL, as pre-registered.** The size criterion passes on both
+processes, but the exponents (0.180 / 0.245) miss ±0.1. The exponent criterion is
+unpowered at context 8 (`experiments/exponent-ceiling/`). B also invents growth on
+static clips (0.110 > 0.1).
+
+## Reading
+
+1. **The transformer carries a little more size at +24 than the linear map, but not
+   significantly.** It closes 73–84 % of the readout ridge's gain against A's 57–68 %,
+   and its CIs are tighter. The paired difference to A spans 0 on every process.
+2. **It buys that partly with a population prior.** Its static exponent is 0.110 and
+   its exponents on the growing processes are flatter than A's. That is the signature
+   of the pooled trend: some average growth applied to every clip. It has learned more
+   of "clips usually grow" and less of "this clip grows like this" than the linear map.
+3. **It is worse at short range.** At +1 it is 0.3–0.4 px worse than persistence,
+   because one loss averaged over all 24 horizons is dominated by the long horizons,
+   where change is large.
+4. **Taken together with A and the ceiling:** two label-free forecasters of the pooled
+   state, one linear and one non-linear, both carry clip-specific growth beyond any
+   trend-blind baseline (powered, CIs above 0). Both land where 8 noisy context frames
+   allow (`exponent-ceiling`). The bottleneck is now the information in the context,
+   not the forecaster.
