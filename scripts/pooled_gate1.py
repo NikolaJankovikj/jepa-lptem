@@ -94,9 +94,10 @@ def r2_table(pred: np.ndarray, y: np.ndarray, physics: np.ndarray) -> dict:
 
 
 def snippet_exponents(radius: np.ndarray, meta: list[dict], windows: np.ndarray) -> dict:
-    """Per process, ``(exponent, clip)`` of the readout's mean radius over the true
-    future frames (8-31) of each physics window."""
-    frames = np.arange(CTX, CTX + HORIZON)
+    """Per process, ``(exponent, clip)`` of the readout's mean radius over the last
+    HORIZON frames (the forecast frames, 8-31 of a 32-frame window) of each physics
+    window."""
+    frames = np.arange(radius.shape[1] - HORIZON, radius.shape[1])
     rows = {}
     for i in windows:
         m = meta[i]

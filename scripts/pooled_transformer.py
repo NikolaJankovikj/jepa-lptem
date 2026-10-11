@@ -36,12 +36,12 @@ LR, EPOCHS, BATCH, SEED = 1e-3, 100, 64, 0
 
 
 class PooledForecaster(nn.Module):
-    """``(B, CTX, D)`` pooled context -> ``(B, HORIZON, D)`` forecasts of +1..+HORIZON."""
+    """``(B, ctx, D)`` pooled context -> ``(B, HORIZON, D)`` forecasts of +1..+HORIZON."""
 
-    def __init__(self, enc_dim: int):
+    def __init__(self, enc_dim: int, ctx: int = CTX):
         super().__init__()
         self.inp = nn.Linear(enc_dim, DIM)
-        self.t_emb = nn.Parameter(torch.zeros(1, CTX, DIM))
+        self.t_emb = nn.Parameter(torch.zeros(1, ctx, DIM))
         self.h_emb = nn.Parameter(torch.randn(1, HORIZON, DIM) * 0.02)
         layer = nn.TransformerEncoderLayer(
             DIM,
@@ -59,7 +59,7 @@ class PooledForecaster(nn.Module):
         nn.init.zeros_(self.out.bias)
 
     def forward(self, ctx: torch.Tensor) -> torch.Tensor:
-        mask = nn.Transformer.generate_square_subsequent_mask(CTX, device=ctx.device)
+        mask = nn.Transformer.generate_square_subsequent_mask(ctx.shape[1], device=ctx.device)
         h = self.blocks(self.inp(ctx) + self.t_emb, mask=mask, is_causal=True)[:, -1:]
         return ctx[:, -1:] + self.out(self.norm(h + self.h_emb))
 
@@ -68,7 +68,7 @@ def train(z: np.ndarray, split: dict) -> tuple[PooledForecaster, list[dict]]:
     """Fit on train windows; keep the epoch with the lowest val L1 at +24."""
     torch.manual_seed(SEED)
     x = torch.from_numpy(z.astype(np.float32))
-    model = PooledForecaster(x.shape[-1])
+    model = PooledForecaster(x.shape[-1], x.shape[1] - HORIZON)
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
     tr = torch.from_numpy(split["train"])
     steps = EPOCHS * -(-len(tr) // BATCH)
@@ -90,7 +90,7 @@ def run_epoch(model: PooledForecaster, windows: torch.Tensor, opt) -> float:
     losses = []
     for batch in torch.randperm(len(windows)).split(BATCH):
         w = windows[batch]
-        loss = (model(w[:, :CTX]) - w[:, CTX:]).abs().mean()
+        loss = (model(w[:, :-HORIZON]) - w[:, -HORIZON:]).abs().mean()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -102,13 +102,13 @@ def run_epoch(model: PooledForecaster, windows: torch.Tensor, opt) -> float:
 @torch.no_grad()
 def val_l1_at_24(model: PooledForecaster, windows: torch.Tensor) -> float:
     model.eval()
-    return float((model(windows[:, :CTX])[:, -1] - windows[:, -1]).abs().mean())
+    return float((model(windows[:, :-HORIZON])[:, -1] - windows[:, -1]).abs().mean())
 
 
 @torch.no_grad()
 def forecast_all(model: PooledForecaster, z: np.ndarray) -> np.ndarray:
     model.eval()
-    return model(torch.from_numpy(z[:, :CTX].astype(np.float32))).numpy()
+    return model(torch.from_numpy(z[:, :-HORIZON].astype(np.float32))).numpy()
 
 
 def main() -> None:

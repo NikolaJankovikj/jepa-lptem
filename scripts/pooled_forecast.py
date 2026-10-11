@@ -41,7 +41,6 @@ from eval_forecasts import EXPONENT_TOL, gaussian_w2, moments_from_observables
 from gate2_followup import bootstrap_ci
 from growth_identifiability import context_features, ridge_fit
 from pooled_gate1 import (
-    CTX,
     HORIZON,
     JUDGED,
     LAMBDAS,
@@ -75,12 +74,12 @@ def read_z(readout: Readout, z: np.ndarray) -> np.ndarray:
 
 
 def held_forecasts(z: np.ndarray) -> dict:
-    """``(W, 32, D)`` z-scored pooled states -> persistence / ctxmean / floor ``(W, 24, D)``."""
-    future = slice(CTX, CTX + HORIZON)
+    """``(W, ctx + 24, D)`` z-scored pooled states -> persistence / ctxmean / floor
+    ``(W, 24, D)``. The context is everything before the last HORIZON frames."""
     return {
-        "persistence": np.repeat(z[:, CTX - 1 : CTX], HORIZON, axis=1),
-        "ctxmean": np.repeat(z[:, :CTX].mean(axis=1, keepdims=True), HORIZON, axis=1),
-        "floor": z[:, future],
+        "persistence": np.repeat(z[:, -HORIZON - 1 : -HORIZON], HORIZON, axis=1),
+        "ctxmean": np.repeat(z[:, :-HORIZON].mean(axis=1, keepdims=True), HORIZON, axis=1),
+        "floor": z[:, -HORIZON:],
     }
 
 
@@ -95,8 +94,8 @@ def linear_candidate(z: np.ndarray, split: dict) -> tuple[np.ndarray, dict]:
     lambda picked on val by pooled L1 at +24. Returns z-scored ``(W, 24, D)``."""
     basis = pca_basis(z[split["train"]].reshape(-1, z.shape[-1]))
     coeffs = z @ basis
-    inputs = np.c_[np.ones(len(z)), coeffs[:, :CTX].reshape(len(z), -1)]
-    targets = coeffs[:, CTX:].reshape(len(z), -1)
+    inputs = np.c_[np.ones(len(z)), coeffs[:, :-HORIZON].reshape(len(z), -1)]
+    targets = coeffs[:, -HORIZON:].reshape(len(z), -1)
     tr, va = split["train"], split["val"]
     gram, cross = inputs[tr].T @ inputs[tr], inputs[tr].T @ targets[tr]
     scores = {}
@@ -112,13 +111,14 @@ def linear_candidate(z: np.ndarray, split: dict) -> tuple[np.ndarray, dict]:
 
 def label_references(readings: np.ndarray, truth: np.ndarray, train) -> dict:
     """Mean-radius forecasts ``(W, 24)`` from the context readouts: pooled trend and
-    readout ridge. ``readings`` are the readout's mean radius on frames 0-7."""
-    last = np.maximum(readings[:, CTX - 1 : CTX], MIN_READING_PX)
-    with np.errstate(divide="ignore", invalid="ignore"):  # empty frame 7: not fitted on
-        ratio = truth[:, CTX:] / truth[:, CTX - 1 : CTX]
+    readout ridge. ``readings`` are the readout's mean radius on the context frames,
+    ``truth`` the true mean radius on context and forecast frames."""
+    last = np.maximum(readings[:, -1:], MIN_READING_PX)
+    with np.errstate(divide="ignore", invalid="ignore"):  # empty last frame: not fitted on
+        ratio = truth[:, -HORIZON:] / truth[:, -HORIZON - 1 : -HORIZON]
     fit = train & np.isfinite(ratio).all(axis=1) & (ratio > 0).all(axis=1)
-    x = context_features(np.maximum(readings, MIN_READING_PX))
-    weights = ridge_fit(x[fit], np.log(truth[fit, CTX:] / last[fit]))
+    x = context_features(np.maximum(readings, MIN_READING_PX), readings.shape[1])
+    weights = ridge_fit(x[fit], np.log(truth[fit, -HORIZON:] / last[fit]))
     return {
         "pooled_trend": last * np.median(ratio[fit], axis=0),
         "readout_ridge": last * np.exp(x @ weights),
@@ -137,7 +137,7 @@ def observables(
     latents["linear"], fit_info = linear_candidate(z, split)
     obs = {name: read_z(readout, lat) for name, lat in latents.items()}
     radius = {name: o[..., RADIUS] for name, o in obs.items()}
-    readings = read_z(readout, z[:, :CTX])[..., RADIUS]
+    readings = read_z(readout, z[:, :-HORIZON])[..., RADIUS]
     radius |= label_references(
         readings, truth, np.isin(np.arange(len(z)), split["train"])
     )
@@ -153,10 +153,10 @@ def paired_gain(
     return err[ref] - err[method]
 
 
-def exponents(radius: np.ndarray, meta: list[dict], rows: np.ndarray) -> dict:
+def exponents(radius: np.ndarray, meta: list[dict], rows: np.ndarray, ctx: int) -> dict:
     """Median exponent over +1..+24 per process, clip-bootstrap CI."""
-    full = np.full((len(radius), CTX + HORIZON), np.nan)
-    full[:, CTX:] = radius
+    full = np.full((len(radius), ctx + HORIZON), np.nan)
+    full[:, ctx:] = radius
     out = {}
     for process, pairs in snippet_exponents(full, meta, rows).items():
         values, clips = zip(*pairs, strict=True)
@@ -251,8 +251,8 @@ def tables_by_process(obs: dict, radius: dict, targets: np.ndarray, rows_of: dic
     """Reported, not judged: mean-radius MAE (all methods) and Gaussian W2 (latent
     methods) per process and horizon. ``rows_of``: process -> test physics windows."""
     return {
-        "mae_px": {p: mae_table(radius, targets[:, CTX:, RADIUS], rows) for p, rows in rows_of.items()},
-        "w2_px": {p: w2_table(obs, targets[:, CTX:], rows) for p, rows in rows_of.items()},
+        "mae_px": {p: mae_table(radius, targets[:, -HORIZON:, RADIUS], rows) for p, rows in rows_of.items()},
+        "w2_px": {p: w2_table(obs, targets[:, -HORIZON:], rows) for p, rows in rows_of.items()},
     }
 
 
@@ -269,9 +269,10 @@ def evaluate(readout: Readout, z: np.ndarray, ctx: dict, extra: dict | None = No
     process = np.array([m["process"] for m in meta])
     rows_of = {p: test[process[test] == p] for p in sorted(set(process))}
     clips = np.array([m["clip"] for m in meta])
-    future = targets[:, CTX:, RADIUS]
+    future = targets[:, -HORIZON:, RADIUS]
     tests = {p: growth_test(radius, future, rows_of[p], clips) for p in JUDGED}
-    exps = {name: exponents(r, meta, test) for name, r in radius.items()}
+    ctx_len = z.shape[1] - HORIZON
+    exps = {name: exponents(r, meta, test, ctx_len) for name, r in radius.items()}
     exps["true"] = {p: next(m.get("exponent") for m in meta if m["process"] == p) for p in rows_of}
     return {
         "linear_fit": fit_info,

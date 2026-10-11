@@ -51,10 +51,10 @@ def mean_radius(rad: np.ndarray) -> np.ndarray:
     return np.where(count > 0, rad.sum(axis=0) / np.maximum(count, 1), np.nan)
 
 
-def context_features(readings: np.ndarray) -> np.ndarray:
+def context_features(readings: np.ndarray, ctx: int = CTX) -> np.ndarray:
     """Context readings relative to the last one, their squares, and log size."""
-    rel = readings[:, :CTX] / readings[:, CTX - 1 : CTX]
-    return np.c_[np.ones(len(readings)), rel, rel**2, np.log(readings[:, CTX - 1])]
+    rel = readings[:, :ctx] / readings[:, ctx - 1 : ctx]
+    return np.c_[np.ones(len(readings)), rel, rel**2, np.log(readings[:, ctx - 1])]
 
 
 def ridge_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:

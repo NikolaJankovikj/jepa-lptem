@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-from pooled_forecast import CTX, HORIZON, gate_result, linear_candidate, paired_gain
+from pooled_forecast import gate_result, linear_candidate, paired_gain
+from pooled_gate1 import CTX, HORIZON
 
 
 def test_linear_candidate_extrapolates_a_per_window_trend():
