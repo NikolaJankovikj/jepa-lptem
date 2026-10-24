@@ -21,14 +21,15 @@ Local machine = coding + CPU unit tests + analysis + writing. GPU work (feature 
 LoRA adaptation, predictor/baseline training) runs on the remote 2× RTX 3090 box — see the
 "Two machines, one repo" section of `PLAN.md` and the runbook in [`docs/remote.md`](docs/remote.md).
 
-## Status (2026-10-01)
+## Status (2026-10-24)
 
-- **Dataset** `dynamics-v1`: 2000 audited clips — [`experiments/dataset-v1/`](experiments/dataset-v1/README.md)
-- **Feature cache**: 4000 frozen V-JEPA 2 windows, audited (Step 6 in `PLAN.md`)
-- **Gate 1: PASS**, marginal on count — [`experiments/gate1/`](experiments/gate1/README.md)
-- **Predictor** `predictor-v1`: 9 % below the context-mean baseline — [`experiments/predictor-v1/`](experiments/predictor-v1/README.md)
-- **Gate 2: FAIL** as pre-registered; the size criterion turned out to have no power (even the true future fails it) — [`experiments/core/`](experiments/core/README.md)
-- **Next**: Gate-2 follow-up (longer rollout, blur vs growth, CIs)
+Full findings by research question: [`docs/findings.md`](docs/findings.md).
+
+- **Gate 1** (per-frame features): FAIL on count only; size, area and MSD pass — [`experiments/gate1-perframe/`](experiments/gate1-perframe/README.md)
+- **Gate 2** (token-level forecasts): FAIL; half the particles leave their token each step, so deterministic forecasts erase them — [`experiments/core-perframe/`](experiments/core-perframe/README.md), [`experiments/token-persistence/`](experiments/token-persistence/README.md)
+- **Gate 2′** (frame-averaged latent): size criterion passes, exponents damped by the context's noise — [`experiments/pooled-forecast/`](experiments/pooled-forecast/README.md), [`experiments/longer-context/`](experiments/longer-context/README.md)
+- **RQ3** (dose): 0.3–0.6 px worse at low dose at every horizon, through the readout — [`experiments/snr/`](experiments/snr/README.md)
+- **Next**: RQ2, event anticipation
 
 ## Tests
 

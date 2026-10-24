@@ -1,185 +1,154 @@
-# Where the project stands (2026-10-02)
+# Where the project stands (2026-10-24)
 
-A review of everything run on the PC so far: what was done, what went wrong, which of it
-is our doing, and what the options are now. Numbers are from the experiment READMEs and
-JSON files, which were re-checked against each other. Each section links its source.
+The findings so far, by research question. Every number is from an experiment README
+and its `metrics.json`, and each section names its folder under `experiments/`. Each
+rule was fixed in `PLAN.md` before its run. This replaces the 2026-10-02 snapshot,
+which is in git history (`b303d07`).
 
-## 1. What was done
+## 1. The answer so far
 
-| Step | Result | Source |
+| Question (`thesis_brief.md`) | Answer | Where |
 |---|---|---|
-| Dataset `dynamics-v1`: 2000 simulated LPTEM clips, 5 processes, 2 strata | done, audited | `experiments/dataset-v1/` |
-| Feature cache: frozen V-JEPA 2 ViT-L, **each 64-frame window encoded in one pass** | done, audited | `PLAN.md` Step 6 |
-| Gate 1 on that cache | **PASS**, marginal on count (R² radius 0.910, count 0.806, MSD at ceiling) | `experiments/gate1/` |
-| predictor-v1 (block-causal, 26 M params, L1, rollout 2) | 9 % below the context-mean baseline | `experiments/predictor-v1/` |
-| Gate 2 | **FAIL** as pre-registered | `experiments/core/` |
-| Gate 2 follow-up (+24, bootstrap CIs) | does not rescue Gate 2; forecasts fade | `experiments/core/` |
-| Look-ahead check | **the cache leaks the future into the context** | `experiments/leak-check/` |
-| Per-frame re-extraction + Gate 1 again | **FAIL on count** (0.726); radius, area, MSD pass | `experiments/gate1-perframe/` |
+| **RQ1.** Do predicted latents decode to correct future physics? | **Partly.** Token-level forecasts fail for a structural reason. A label-free forecaster on the frame-averaged latent carries each clip's growth (size criterion passes), but its exponents are damped. The damping comes from the context's noise, not the model. | §2 |
+| **RQ2.** Does prediction error anticipate coalescence? | Not started. Data ready: 1035 merge events with exact times. | §4 |
+| **RQ3.** How does quality degrade with horizon and SNR? | **Strongly with horizon, mildly with dose.** Low dose costs 0.3–0.6 px of mean-radius error at every horizon, through the readout. Not significant at the pre-registered +24, significant post hoc at +1. Context length matters more than dose for exponents. | §3 |
 
-## 2. What went wrong, and whose fault it is
+## 2. RQ1: forecasts that decode to physics
 
-### 2a. The look-ahead leak: our design error, now fixed
+### 2a. The frozen encoder reads the present (Gate 1)
 
-- **What it was.**
-  - The cache was built for Gate 1, where the job is to read the *current* state, so
-    encoding whole 64-frame windows looked harmless.
-  - The forecasting predictor was then trained on the same cache. Each of its 8 context
-    latents had been computed by an encoder that attended over all 64 frames, the 48
-    future frames included.
-  - Nobody checked whether that cache was causal before reusing it for forecasting.
-- **How big it was.**
-  - Context latents re-encoded without the future agree with the cached ones at only
-    cosine 0.74–0.84. The closer a frame is to the forecast, the lower the agreement.
-  - Swapping only the future frames changes the "past" features and the probe's reading of
-    them (`leak-check/lookahead.png`).
-- **What it invalidated.**
-  - v1's one clear win was detection F1 at +1: 0.80 vs persistence 0.56. With honest
-    contexts it falls to 0.54 vs 0.56.
-  - So the "drift carried forward" result was the encoder reading the future, not learned
-    dynamics.
-  - The Gate-2 FAIL still stands as recorded, but it is not interpretable.
-  - predictor-v2 was planned on the same cache. No v2 results exist in the repo, and it
-    should be dropped.
-- **The fix.**
-  - `extract_features.py --per-frame` encodes each 2-frame tubelet alone. This is how Meta
-    uses the same encoder for its world model: V-JEPA 2-AC "encode[s] each frame
-    independently" (V-JEPA 2 paper, §AC).
-  - On the leak figure, swapping the future changes per-frame context features by exactly 0.
-  - **Confirmed on the full cache** (`logs/pf-audit.log`): overlapping windows agree at
-    cosine 1.000 on shared frames. The whole-window cache gave 0.786.
+Frozen V-JEPA 2 ViT-L, each 2-frame tubelet encoded alone (`gate1-perframe/`, test,
+physics stratum):
 
-### 2b. Gate 2's size criterion had no power: our pre-registration error
-
-- The rule required the forecast to beat persistence by 30 % in size distance at +5.
-- Even the *true* future beats persistence by only 3–6 %, because radii barely change over
-  10 frames compared with the probe's ~2 px reading error.
-- That threshold was set without first measuring the floor. The follow-up fixed this
-  properly: a test only counts where the floor itself has power. It is recorded as a
-  protocol error, not explained away.
-
-### 2c. Forecasts fade on long rollouts: a known limitation, not specific to us
-
-- By +24, v1's forecasts lose 43–74 % of the particles, while the true future stays sharp
-  (F1 ≥ 0.85).
-- This is what a deterministic L1 forecaster does when the future is uncertain: it
-  averages, so the forecast blurs.
-- V-JEPA 2-AC uses the same recipe (L1, teacher forcing plus a rollout of T = 2), and its
-  authors report the same error accumulation over longer rollouts.
-- It has not been measured on honest (per-frame) features yet. The fade may look different
-  there.
-
-### 2d. Count fails Gate 1 on per-frame features: not a bug, and partly our choices
-
-| Gate 1 (test, physics stratum) | per-frame | whole-window |
+| | value | bar |
 |---|---|---|
-| R² mean radius ≥ 0.8 | 0.902 ✔ | 0.910 |
-| R² count ≥ 0.8 | **0.726 ✘** (val 0.575) | 0.806 (val 0.699) |
-| MSD / 4Dt vs ceiling 0.955 | 0.986 ✔ | 0.995 |
-| R² total area | 0.928 | 0.926 |
-| detection precision / recall | 0.870 / 0.797 | 0.896 / 0.810 |
+| R² mean radius | 0.902 | ≥ 0.8 ✔ |
+| R² count | **0.726** | ≥ 0.8 ✘ |
+| R² total area | 0.928 | – |
+| MSD / 4Dt | 0.986 (perfect-detector ceiling 0.955) | within 20 % ✔ |
 
-**Why it is not a pipeline bug:**
-- The script, split and probe are the same, and the val-picked threshold is the same.
-- A broken cache or misaligned labels would hurt everything. Here radius and area are
-  unchanged, and the MSD still sits at the perfect-detector ceiling.
-- Only one observable dropped, on both splits, by a similar amount (0.08 on test, 0.12 on
-  val).
+**FAIL on count only.** The count loss is uniform across crop-edge buckets and largest
+on reaction and ripening, the processes with many small particles. It looks like shot
+noise on small particles in a single frame, not merging or edge effects.
 
-**Why count, specifically.** My first guess was the crop edge and merging particles,
-where Gate 1 had located count's errors. The secondary analysis (B, 2026-10-03,
-`experiments/gate1-perframe/secondary.json`) **refutes that guess**:
-- **Not the edge.** Count error rises by the same ~0.1 MAE in every edge bucket, frames
-  with no edge particle included (0.63 → 0.75).
-- **Not merging.** Coalescence loses 0.08 R², about average. The largest losses are
-  **reaction (−0.13) and ripening (−0.11)**, the two processes with many *small* particles:
-  growing from nucleation, or dissolving toward the visibility floor. Static loses least
-  (−0.06). Ripening's mean radius drops most too (0.80 → 0.74).
-- **Reading:** a per-frame latent sees one dose of shot noise. The whole-window encoder
-  averaged it over many frames, which made small, faint particles countable. So count is
-  lost to **noise at small sizes**, not to geometric ambiguity. Untested directly: it would
-  need count error split by particle size.
-- Some of that averaging used *past* frames, which is legitimate. Some used future frames,
-  which is not.
+### 2b. Token-level forecasting fails, and the reason is structural
 
-**What is our doing:**
-- **The probe reads one latent frame at a time.** That was fine when every latent had
-  seen 64 frames. On per-frame features it means count is judged from 2 frames. The
-  predictor itself sees 8 frames of context, so the gate measures a harder task than the
-  model faces.
-- **The label convention.** A particle counts only if its centre is inside the crop, while
-  particles straddling the edge are half visible.
-- **The 0.8 bar on count was set without knowing count's noise.** Val and test disagree by
-  0.10–0.15 on both caches. Count's true value is uncertain by about that much.
-- None of this changes the verdict. The rule was fixed in advance, and the result is a
-  FAIL.
+- **Gate 2 FAIL** (`core-perframe/`): at +5 the forecasts are 76–82 % *worse* than
+  holding the last frame in size distance. They fade: peak occupancy 0.96 → 0.69 → 0.44
+  at +1 / +5 / +10.
+- **No growth under the blur** (`forecast-probe/`): readouts trained on the forecasts
+  read them about as well as the last context frame, but find no growth beyond it
+  (gain −0.23 [−0.50, +0.03] / +0.04 [−0.21, +0.30] px on diffusion / reaction).
+- **Why** (`token-persistence/`, ground truth only): **half the particles leave their
+  16 px token within one latent step** (0.49 at +1, 0.23 at +5, 0.06 at +24). The
+  L1-optimal deterministic forecast per token is then background, so particles are
+  erased, whatever the loss or rollout. This is the conditional-mean collapse the
+  stochastic-JEPA papers (MoP-JEPA, Variational JEPA) describe, here on a scientific
+  instrument and measured.
+- **What stays predictable** (`growth-identifiability/`): from 8 noisy readings of mean
+  radius, a 20-term ridge with no labels cuts the +24 error from 3.26 / 3.90 px
+  (persistence) to 1.31 / 1.86 px. Growth is predictable; positions are not.
 
-**What is the encoder's doing:**
-- V-JEPA 2 was trained on 16–64-frame clips, with images shown as 16 identical frames. A
-  2-frame clip is an unusual input for it.
-- Meta's follow-up, **V-JEPA 2.1**, changed two things for exactly this use. It added a
-  native image tokenizer (a 2D 16×16 patch embedding for single frames) and a loss on every
-  token. Frozen dense-probe scores roughly doubled (ADE20K mIoU 24.4 → 47.9, largest model).
+### 2c. Position-free forecasting carries growth (Gate 2′)
 
-## 3. What depends on count downstream
+The state is the 256 tokens averaged per frame (`pooled-gate1/`: R² mean radius 0.877,
+area 0.942, count 0.723; exponents read off the true future 0.311 / 0.473 against
+1/3 and 1/2).
 
-- **Growth exponent** reads mean radius only. Not affected.
-- **Positions and F1** read the centroid probe. Slightly weaker (precision 0.870 vs 0.896).
-- **Size-distribution distance** takes its spread from area / (π · count). Affected: it
-  inherits the noisier count, and that has to be stated next to every size number.
+| context 8, +24 (`pooled-forecast/`) | gain over the pooled trend (px) | exponent diffusion / reaction / static |
+|---|---|---|
+| A: linear (PCA 64 → ridge), no labels | +0.42 [+0.15, +0.68] / +0.66 [+0.35, +0.98] | 0.208 / 0.269 / 0.008 |
+| B: causal transformer, no labels | +0.54 [+0.30, +0.77] / +0.81 [+0.59, +1.03] | 0.180 / 0.245 / 0.110 |
+| B minus A | +0.12 [−0.18, +0.41] / +0.16 [−0.12, +0.43] | – |
 
-## 4. Is LoRA the only path? No.
+**Gate 2′ FAIL for both, as pre-registered.** The size criterion passes on both
+processes, and the exponent criterion fails (±0.1 bar). A bigger model is not
+significantly better.
 
-As pre-registered, a Gate-1 FAIL makes LoRA (Step 8) the main path. That rule was written
-to answer one question: are frozen features able to represent LPTEM physics at all? On
-per-frame features the answer is "yes, except count". Count's shortfall points at
-**noise on small particles in a single frame** (section 2d). Averaging over past frames
-(D), better dense features (C) and adapting to LPTEM's noise (LoRA) all plausibly
-address it. Any deviation
-from the rule must be written into `PLAN.md`, dated, before the next result is seen.
+### 2d. The exponent shortfall is the context's, not the latent's
 
-| Path | Cost | What it answers | Fixes count? |
-|---|---|---|---|
-| **A. Stage 2 on the per-frame cache** (predictor from scratch, Gate 2, follow-up) | ~7 h, 1 GPU, ready to launch | The core thesis question on honest features: does a latent predictor learn growth physics? | No. Size numbers carry the weak count |
-| **B. Diagnostics** (`gate1_secondary.py`, audit log) | ~30 min CPU | Where count is lost (edge vs coalescence vs density); confirms the cache is per-frame | Locates it |
-| **C. V-JEPA 2.1 ViT-L, frozen, per-frame** | Loader via `torch.hub` (not in HF transformers), ~1 day all in | Whether a better frozen dense encoder lifts count. Same size as now (300 M) | Plausibly. Built for single-frame dense features |
-| **D. Past-only sliding window** (encode frames t−15…t+1, keep the last tubelet) | ~6–8× the extraction compute, ~70 GB disk, ~1–2 days | Whether *past* temporal context recovers count without any leak | Plausibly: it averages noise again, without the future |
-| **E. LoRA** (Step 8) | 2–3 days per run, plus first getting Meta's training loop running (not started) | Whether domain adaptation helps; mainly the sim-to-real question (Step 13) | Plausibly: it learns LPTEM's noise. Must also be trained per-frame to match how it is used |
+- **Exponent ceiling** (`exponent-ceiling/`, ground truth): with noise-free context,
+  kNN recovers 0.339 / 0.494. At the probe's reading noise (sd 0.8 px) the best
+  context-only method reaches 0.263 / 0.313. **The bar is not reachable from 8 noisy
+  frames by any forecaster.** It is recorded as unpowered; no verdict changed.
+- **Longer context** (`longer-context/`): from context 8 to 16, the linear candidate's
+  exponents rise +0.097 / +0.104 (paired, CIs above 0). That is about the ceiling's own
+  rise. They reach 0.287 / 0.340, and the gap to the ceiling stays 0.00–0.07. The
+  transformer rises only +0.014 / +0.027 and keeps inventing growth on static clips
+  (~0.11): it is model-limited.
+- **Mixture of predictors** (`mop-ceiling/`, ground truth): mode forecasts undo the
+  damping only when the context identifies the process. At sd 0.8 the router picks the
+  right process 33 % of the time (chance 20 %), and the top head falls to
+  0.191 / 0.120, below the averaged ridge. Not built.
 
-**Why A comes first whatever is chosen:** every encoder path ends with "train the predictor,
-run Gate 2", and A is that step on the encoder already in hand. If the predictor fails on
-radius and positions, which pass Gate 1, then fixing count does not save the thesis. If it
-succeeds, C or D is a clean "better encoder" comparison on top.
+**Reading for RQ1:** a label-free linear map on the frame-averaged V-JEPA latent takes
+what the context offers. The remaining exponent error is what 8–16 noisy frames allow.
 
-**Recommended order:** A and B now, together on the PC. Then C if count needs fixing, D as
-the fallback. LoRA moves back to what it was best suited for: the sim-to-real step.
+## 3. RQ3: horizon and dose (`snr/`)
 
-## 5. What the thesis can already say
+Linear candidate, longer-context design A, test clips split at beam flux 21.2 (median
+12.3 vs 39.3 e/px):
 
-1. Frozen V-JEPA 2 features carry LPTEM physics. Size and diffusion are readable at
-   R² ≈ 0.9, and the MSD is within 2–3 % of the perfect-detector ceiling, *even with no
-   temporal context*.
-2. Encoding whole clips leaks the future into a latent forecaster's context and fakes
-   predictive skill. This has been measured, shown and fixed. It is a methodological
-   warning anyone building latent world models on video encoders can use.
-3. **On honest (per-frame) features, Gate 2 fails clearly** (2026-10-03,
-   `experiments/core-perframe/`). The deterministic predictor's forecasts dissolve within
-   about 5 steps and end up worse than holding the last frame. Meanwhile the true future
-   stays readable (the exponents are recovered to ±0.02). The bottleneck is the forecaster
-   and its objective, not the encoder or the probes.
-   The forecast-trained readout (2026-10-04, `experiments/forecast-probe/`) settles which:
-   probes trained on the forecasts read them about as well as the last context frame, so
-   most of the fade was the frozen probes. But they find no growth beyond that frame. The
-   per-token L1 objective did not teach the trend, so the objective has to change.
+- **The readout is noisier at low dose:** sd-equivalent 1.21 vs 0.88 px (MAE 0.97 vs
+  0.70), and it reads particles slightly small (bias −0.23 px).
+- **Pre-registered test, context 16, +24:** low minus high dose +0.32 [−0.20, +1.03] px
+  (diffusion) and +0.28 [−0.61, +1.27] (reaction). **Not shown.** With ~15 clips per
+  bin and process, it was close to unpowered, as predicted.
+- **Post hoc, +1:** +0.41 / +0.64 / +0.49 px (diffusion / reaction / static), all CIs
+  above 0. The penalty stays 0.3–0.6 px at every horizon while the forecast error grows,
+  so at +24 the growth extrapolation swamps it.
+- **Exponents:** between dose bins the ceiling moves by at most 0.034, against 0.07–0.10
+  from context 8 → 16. Over 6–75 e/px, more frames help growth recovery more than
+  brighter frames.
+- **Not answerable here:** mean liquid thickness is fixed at 150 nm in dynamics-v1, so
+  the thickness half of RQ3 needs new clips.
 
-## Open items
+## 4. RQ2: not started
 
-- [x] Provenance (`logs/pf-audit.log`): cos 1.000 on shared frames — the cache is per-frame.
-- [x] `gate1_secondary.py --gate1 experiments/gate1-perframe` (2026-10-03): count loss is uniform across edge buckets, largest on reaction / ripening.
-- [x] Decided 2026-10-02: A + B now; V-JEPA 2.1 next as encoder candidate; LoRA planned, timing open (`PLAN.md` Step 8).
-- [ ] Superseded notes on the docs that still quote v1 as evidence of learned dynamics
-  (`README.md` status, `experiments/core/README.md`, `experiments/predictor-v1/README.md`).
+Plan (`PLAN.md` Step 12, to be revised before anything runs): prediction error over time
+on held-out coalescence clips, aligned to the true merge times, scored by lead time and
+ROC against windows without merges. Two additions before any run: a frame-difference
+baseline the predictor must beat, and a ground-truth check that a merge changes the
+image more than ordinary Brownian motion. Expected from §2b: detection at the merge at
+best, not anticipation, because seeing a merge coming needs positions.
 
-Sources: V-JEPA 2 paper, arXiv 2506.09985 (§ V-JEPA 2-AC: frame-wise encoding, T = 2
-rollout, error accumulation); V-JEPA 2.1, arXiv 2603.14482 (image tokenizer, dense loss,
-dense-probe results); checkpoints at github.com/facebookresearch/vjepa2.
+## 5. Methodological findings
+
+1. **The look-ahead leak** (`leak-check/`). Encoding whole 64-frame windows leaks the
+   future into a latent forecaster's context. The context latents agreed with honest
+   re-encodings at only cosine 0.74–0.84, and v1's one clear win (detection F1 0.80 vs
+   persistence 0.56 at +1) fell to 0.54 with honest contexts. Fixed by per-frame
+   encoding (shared frames now agree at cosine 1.000). Everything after it was redone.
+2. **Measure the floor or ceiling before setting a bar.** Twice a pre-registered
+   criterion had no power: Gate 2's 30 % size rule (even the true future beats
+   persistence by only 3–6 %), and Gate 2′'s exponent bar (§2d). Both are recorded as
+   protocol errors; no verdict was changed after the fact.
+3. **Check the premise on ground truth first, on the Mac.** Token persistence, growth
+   identifiability, the exponent ceiling and the MoP check each took seconds. Each
+   decided whether a GPU run was worth doing.
+4. **Validate every estimator against known answers.** Three simulator statistics were
+   nearly tuned to artefacts of their own estimators (`PLAN.md` Step 4). Each was caught
+   by pointing the estimator at clips whose answer was known.
+
+## 6. What the thesis can say now
+
+1. A frozen video model never shown a microscope reads nanoparticle size, area and
+   diffusion from single frames at R² ≈ 0.9 and the perfect-detector MSD.
+2. Deterministic token-level latent forecasting cannot work on LPTEM. Half the particles
+   leave their token every step, so the optimal single guess erases them.
+3. Forecasting a position-free state works without labels for growth: it beats every
+   trend-blind baseline at +24, and its exponent error tracks the information limit of
+   the context.
+4. Forecast quality degrades strongly with horizon and mildly with dose, by a roughly
+   constant offset that enters through the readout.
+5. The look-ahead leak is a general warning for latent world models on video encoders.
+
+## 7. Open items
+
+- [ ] RQ2: pre-register, run the ground-truth check, then the PC run if it passes.
+- [ ] RQ3 thickness half: needs clips that vary mean water thickness, or is stated as out of scope.
+- [ ] Real-data validation (`PLAN.md` Step 13): reduced to one qualitative figure on the SAM-EM Au-nanorod clips. The Jamali raw videos are treated as unavailable (no reply).
+- [ ] Pixel ConvLSTM baseline (Step 11): proposed to skip unless asked for.
+- [ ] Branch `worktree-objective-redesign`: an uncommitted, never-run draft (`predictor-obs`), superseded by §2c. Keep or delete.
+- [ ] Delete the leaking whole-window cache on the PC once nothing reads it.
+- [ ] Thesis text: Results draft from the experiment READMEs.
