@@ -189,7 +189,7 @@ def print_report(result: dict) -> None:
             )
     alignment = result["alignment_particle_vs_background"]
     print(
-        f"alignment (post hoc): pixel AUC particle vs background {alignment['auc']:.3f} [{alignment['ci'][0]:.3f}, {alignment['ci'][1]:.3f}]"
+        f"alignment gate: pixel AUC particle vs background {alignment['auc']:.3f} [{alignment['ci'][0]:.3f}, {alignment['ci'][1]:.3f}]"
     )
     print(
         f"pixel sees particles: {result['pixel_sees_particles']}  (False -> premise untestable)"
