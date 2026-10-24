@@ -551,15 +551,42 @@ class LatentForecaster(nn.Module):
 - [ ] Extract observables from its predicted frames via SAM-EM-checkpoint segmentations; add the column to the Gate-2 headline table.
 - [ ] Commit + extend `experiments/core/README.md`.
 
-## Step 12 — Event anticipation
+## Step 12 — Event anticipation (RQ2)
 
-**Where:** remote compute, local analysis. **Files:** `scripts/event_anticipation.py`, `experiments/events/`
+**Where:** premise check and analysis on the Mac; one PC run in between that only reads the cache and the clips (no training). **Files:** `scripts/merge_premise.py` (ground truth, Mac), `scripts/event_signals.py` (PC), `scripts/event_anticipation.py` (Mac), `experiments/events/`.
 
-- [ ] On held-out `ripening_coalescence` videos: per-step teacher-forced latent prediction error as a time series, aligned to GT merge times from `gt.npz`.
-- [ ] Metrics: lead-time distribution (smoothed error exceeds its per-video 95th percentile *k* frames before the merge) + ROC vs matched no-event windows.
-- [ ] Qualitative repeat on real aggregation clips (hand-annotate ~10 visible onsets): one figure, error trace with annotated event.
-- [ ] Note for the write-up: an error spike at an event means the model did **not** fully learn event timing — frame this correctly (timing is plausibly stochastic even when deterministic dynamics are learned; anticipation = usable surprisal signal, not a failure of RQ1).
-- [ ] Write `experiments/events/README.md`. Commit.
+**Fixed 2026-10-24, before any number exists.** This replaces the outline written at the start (kept in git history). Two changes: a pixel and a latent-change baseline the forecaster must beat, and a ground-truth premise check before the PC run.
+
+- **Question.** Does the forecaster's error rise at a merge, or before it? A rise at the merge is a surprise signal (the model cannot predict a random encounter). A rise *before* it would be anticipation. Expected from `experiments/token-persistence/`: detection at the merge at best, because seeing a merge coming needs positions.
+- **Events.** Merges (`merge_events`, `[video frame f, survivor, absorbed]`) in coalescence clips, both strata, where both particles' centres are inside the 256 crop at video frame f − 1. Each clip's two cached windows are stitched into 50 latent frames as in `longer-context`. The merge's latent frame is t_m = f // 2. Kept iff 10 ≤ t_m ≤ 48, so that lags −2…+1 all have an 8-frame context. **Test clips are judged; val clips are reported as a replication** (Gate-1 per-frame split; nothing here is fitted on val).
+- **Signals,** per latent frame t and token (16 × 16 grid, row-major):
+  - `model`: the predictor-perframe checkpoint, teacher-forced on frames t−8…t−1 (its trained context), L1 between its forecast of t and the true frame t, mean over channels, in its standardized space;
+  - `persistence`: |x_t − x_{t−1}|, the same L1 (raw latent change);
+  - `ctxmean`: |x_t − mean(x_{t−8…t−1})|;
+  - `pixel`: |P_t − P_{t−1}| averaged over the token's 16 × 16 pixels, with P_t the mean of the tubelet's two uint8 video frames (the "visually identifiable" change);
+  - position-free (Mac, from the pooled cache): `pooled_linear`, the L1 error at +1 of a one-step label-free linear forecaster on the pooled `mean` (top-64 PCA of the 8 context frames → next frame, λ on val by +1 L1, train split only), and `pooled_change`, |z_t − z_{t−1}|.
+- **Positives and negatives.**
+  - Token signals: the mean over the 3 × 3-token patch around the survivor's centre at video frame f, at t_m + lag, lag ∈ {−2, −1, 0, +1}. Negatives: the same patch around a visible particle at latent frame t (10 ≤ t ≤ 48) of a coalescence clip in the same split, where neither it nor any particle within 48 px is in a merge with |t − t_m| ≤ 3. The negative set does not depend on lag.
+  - Position-free signals: frame t_m + lag against frames 10…48 of the same clips with no merge within ±3.
+  - **Known confound:** before contact a positive patch holds two particles and a negative one, so absolute AUCs before the merge are inflated for every signal alike. That is why the judged claims are paired comparisons between signals on the same patches.
+- **Metrics.** ROC AUC per signal and lag; 95 % CIs by clip bootstrap (positives and negatives of a clip resampled together, 2000 draws, seed 0); paired AUC differences on the same draws. Reported, not judged: lead time, the first lag in −4…0 at which an event's signal exceeds the 95th percentile of its clip's negatives (events with t_m ≥ 12).
+- **Judged readings (test split):**
+  - **R1, detection:** `model` AUC at lag 0 has a CI above 0.5.
+  - **R2, beyond raw change:** AUC(`model`) − AUC(b) at lag 0 has a CI above 0 for **each** b in `persistence`, `ctxmean`, `pixel`. Only this makes the merge signal the forecaster's.
+  - **R3, anticipation:** at lag −1, `model` AUC has a CI above 0.5 **and** AUC(`model`) − AUC(`pixel`) has a CI above 0.
+  - **P1 / P2, position-free:** `pooled_linear` AUC at lag 0 has a CI above 0.5; it minus `pooled_change` has a CI above 0.
+- **Premise check first (`merge_premise.py`, ground truth, Mac, minutes).** 100 fresh coalescence physics clips (100 frames, seed 2), rendered exactly as dynamics-v1 and cropped the same way. The same events, patches and lags, scored with:
+  - `pixel`;
+  - a position-free stand-in: the true crop `[count, mean radius, total area]` per latent frame plus Gaussian noise at the P1 readout's error on true frames, per observable (measured from the pooled cache), scored as Σ_j |Δobs_j| / sd_j. Noise-free reported too.
+  - **Stop rule:** if `pixel` AUC at lag 0 has a CI that is not above 0.5, merges are not visible at this SNR. Then there is no PC run, and RQ2 is recorded as negative at the premise. If the position-free stand-in fails the same test, P1 / P2 are run anyway (cheap) but recorded as expected-null.
+- **Predictions (written before any number).**
+  - Premise: `pixel` AUC ~0.75 at lag 0 and ~0.65 at lag −1 (the two-particle confound); position-free stand-in ~0.55–0.6 with noise, ~0.8 without.
+  - R1 passes (`model` AUC 0.65–0.75 at lag 0). R2 fails: the model's error is a denoised latent change, so it does not beat `persistence` or `pixel`. R3 fails. P1 passes or is borderline, P2 fails. Lead times cluster at lag 0.
+- **Framing for the write-up.** An error spike at a merge means the model did not learn when merges happen. Encounter timing is random, so that is expected even of a perfect deterministic model. A usable surprise signal is a finding about the model, not a failure of RQ1.
+- [ ] Premise check → `experiments/events/premise.json`.
+- [ ] PC: `event_signals.py` → `data/events/signals-v1.npz`, rsync to the Mac.
+- [ ] `event_anticipation.py` → `experiments/events/metrics.json`; write `experiments/events/README.md`. Commit.
+- [ ] Qualitative repeat on real aggregation clips (hand-annotate ~10 visible onsets): one figure. Only if R1 passes.
 
 ## Step 13 — Real-data validation
 
