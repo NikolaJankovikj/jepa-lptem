@@ -52,7 +52,7 @@
 - [x] Cloned upstream code (shallow, gitignored) into `code/`: `sam-em` (has the renderer under `application/`+`data/`), `leonardo` (`LEONARDO_*.py` motion sampling), `vjepa2` (`src/` SSL loop). Note: macOS case-insensitive FS shows `vitG*/vitg*` config collisions in the vjepa2 clone — cosmetic, clean on the Linux remote.
 - [x] Downloaded small dev subsets (~406 MB, in `data/`, gitignored): SAM-EM `ablationValidationSet.zip` (96 MB synthetic+masks), `experimentalAuNanorods.zip`, `experimentalAggregation.zip`; LEONARDO `datasets.zip` + xlsx + `LEONARDOModel`. Everything ≥ 2 GB (trainset 32 GB, holdout 2.3 GB, checkpoint 2.7 GB, 64 GB ablation) deferred to the remote. **Gotcha:** `hf download REPO --include A B C` mis-parses (first name eaten by `--include`, rest positional); download multi-file with one `hf download REPO FILE` call per file.
 - [x] Smoke-loaded V-JEPA 2 (CPU): `facebook/vjepa2-vitl-fpc64-256` → 326M params, `VJEPA2Model` + `VJEPA2VideoProcessor`, weights cached. (Consider `HF_TOKEN` for the remote's 32 GB pulls — unauthenticated HF is throttled.)
-- [ ] **Send the Jamali-lab data-request email** (draft ready in `docs/jamali_data_request_email.md`; off critical path, send now for lead time) — **manual (Nikola)**.
+- [x] **Send the Jamali-lab data-request email** (`docs/jamali_data_request_email.md`) — sent; **no reply** as of 2026-10-11. Treat the raw videos as unavailable.
 - [x] Commit docs (`data_sources.md`, email draft). Code/data are gitignored.
 
 ---
