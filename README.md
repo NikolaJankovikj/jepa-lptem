@@ -29,7 +29,8 @@ Full findings by research question: [`docs/findings.md`](docs/findings.md).
 - **Gate 2** (token-level forecasts): FAIL; half the particles leave their token each step, so deterministic forecasts erase them — [`experiments/core-perframe/`](experiments/core-perframe/README.md), [`experiments/token-persistence/`](experiments/token-persistence/README.md)
 - **Gate 2′** (frame-averaged latent): size criterion passes, exponents damped by the context's noise — [`experiments/pooled-forecast/`](experiments/pooled-forecast/README.md), [`experiments/longer-context/`](experiments/longer-context/README.md)
 - **RQ3** (dose): 0.3–0.6 px worse at low dose at every horizon, through the readout — [`experiments/snr/`](experiments/snr/README.md)
-- **Next**: RQ2, event anticipation
+- **RQ2** (merges): the forecaster's error detects merges (AUC 0.71) but does not anticipate them, and simple baselines do as well — [`experiments/events/`](experiments/events/README.md)
+- **Next**: thesis Results draft
 
 ## Tests
 

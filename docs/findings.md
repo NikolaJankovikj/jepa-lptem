@@ -1,4 +1,4 @@
-# Where the project stands (2026-10-24)
+# Where the project stands (2026-10-24, RQ2 added the same day)
 
 The findings so far, by research question. Every number is from an experiment README
 and its `metrics.json`, and each section names its folder under `experiments/`. Each
@@ -10,7 +10,7 @@ which is in git history (`b303d07`).
 | Question (`thesis_brief.md`) | Answer | Where |
 |---|---|---|
 | **RQ1.** Do predicted latents decode to correct future physics? | **Partly.** Token-level forecasts fail for a structural reason. A label-free forecaster on the frame-averaged latent carries each clip's growth (size criterion passes), but its exponents are damped. The damping comes from the context's noise, not the model. | §2 |
-| **RQ2.** Does prediction error anticipate coalescence? | Not started. Data ready: 1035 merge events with exact times. | §4 |
+| **RQ2.** Does prediction error anticipate coalescence? | **Detects, does not anticipate.** The forecaster's error rises at a merge (AUC 0.71), but no earlier than the pixels show it, and a context average or a brightness change detects merges as well. | §4 |
 | **RQ3.** How does quality degrade with horizon and SNR? | **Strongly with horizon, mildly with dose.** Low dose costs 0.3–0.6 px of mean-radius error at every horizon, through the readout. Not significant at the pre-registered +24, significant post hoc at +1. Context length matters more than dose for exponents. | §3 |
 
 ## 2. RQ1: forecasts that decode to physics
@@ -103,14 +103,35 @@ Linear candidate, longer-context design A, test clips split at beam flux 21.2 (m
 - **Not answerable here:** mean liquid thickness is fixed at 150 nm in dynamics-v1, so
   the thickness half of RQ3 needs new clips.
 
-## 4. RQ2: not started
+## 4. RQ2: merges (`events/`)
 
-Plan (`PLAN.md` Step 12, to be revised before anything runs): prediction error over time
-on held-out coalescence clips, aligned to the true merge times, scored by lead time and
-ROC against windows without merges. Two additions before any run: a frame-difference
-baseline the predictor must beat, and a ground-truth check that a merge changes the
-image more than ordinary Brownian motion. Expected from §2b: detection at the merge at
-best, not anticipation, because seeing a merge coming needs positions.
+Coalescence clips of the test split (48 merges with both particles in the crop; val,
+38, replicates every reading). Signals on the 3 × 3-token patch around the merge,
+against patches around particles far from any merge:
+
+| AUC at the merge | test | one step before |
+|---|---|---|
+| forecaster's +1 error (`model`) | **0.710 [0.618, 0.793]** | 0.592 |
+| raw latent change | 0.635 | 0.550 |
+| distance from the context average | 0.738 | 0.661 |
+| token brightness change (pixels) | 0.704 | 0.657 |
+| frame-averaged forecaster's +1 error | 0.598 [0.524, 0.679] | 0.569 |
+
+- **Detection: yes.** The forecaster's error is larger where two particles merge than
+  where one just moves.
+- **Specific to the forecaster: no.** It beats only the raw latent change (+0.075
+  [+0.033, +0.112], by denoising) and ties the context average and the pixels.
+- **Anticipation: no.** One step before contact everything is above chance, pixels
+  included, because a pre-merge patch holds two particles; the forecaster adds nothing
+  to that (−0.065 against pixels).
+- **It adapts in one frame.** One step after the merge the forecaster's AUC falls to
+  0.57 while the context average and pixels stay near 0.70: it has seen the merged
+  particle and forecasts it. A merge is a one-frame surprise, as expected of a
+  deterministic forecaster facing random encounters (§2b).
+- **Protocol error, caught by a sanity check.** The first premise check used a pixel
+  signal (mean per-pixel change) that could not even tell particles from background
+  (AUC 0.513). It was recorded, replaced by the token-mean change (0.736) and re-run on
+  fresh clips before the PC run.
 
 ## 5. Methodological findings
 
@@ -119,10 +140,12 @@ best, not anticipation, because seeing a merge coming needs positions.
    re-encodings at only cosine 0.74–0.84, and v1's one clear win (detection F1 0.80 vs
    persistence 0.56 at +1) fell to 0.54 with honest contexts. Fixed by per-frame
    encoding (shared frames now agree at cosine 1.000). Everything after it was redone.
-2. **Measure the floor or ceiling before setting a bar.** Twice a pre-registered
+2. **Measure the floor or ceiling before setting a bar, and test every baseline on a
+   known answer.** Twice a pre-registered
    criterion had no power: Gate 2's 30 % size rule (even the true future beats
-   persistence by only 3–6 %), and Gate 2′'s exponent bar (§2d). Both are recorded as
-   protocol errors; no verdict was changed after the fact.
+   persistence by only 3–6 %), and Gate 2′'s exponent bar (§2d). A third time a baseline
+   was blind (RQ2's first pixel signal, §4). All are recorded as protocol errors; no
+   verdict was changed after the fact.
 3. **Check the premise on ground truth first, on the Mac.** Token persistence, growth
    identifiability, the exponent ceiling and the MoP check each took seconds. Each
    decided whether a GPU run was worth doing.
@@ -141,11 +164,14 @@ best, not anticipation, because seeing a merge coming needs positions.
    the context.
 4. Forecast quality degrades strongly with horizon and mildly with dose, by a roughly
    constant offset that enters through the readout.
-5. The look-ahead leak is a general warning for latent world models on video encoders.
+5. The forecaster's error flags merges as they happen but does not anticipate them, and
+   simple baselines flag them as well: a deterministic latent forecaster's surprise is not
+   a learned event detector here.
+6. The look-ahead leak is a general warning for latent world models on video encoders.
 
 ## 7. Open items
 
-- [ ] RQ2: pre-register, run the ground-truth check, then the PC run if it passes.
+- [ ] RQ2 qualitative figure on real aggregation clips: allowed (R1 passed), proposed to skip (R2 failed).
 - [ ] RQ3 thickness half: needs clips that vary mean water thickness, or is stated as out of scope.
 - [ ] Real-data validation (`PLAN.md` Step 13): reduced to one qualitative figure on the SAM-EM Au-nanorod clips. The Jamali raw videos are treated as unavailable (no reply).
 - [ ] Pixel ConvLSTM baseline (Step 11): proposed to skip unless asked for.

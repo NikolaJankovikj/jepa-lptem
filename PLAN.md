@@ -587,9 +587,10 @@ class LatentForecaster(nn.Module):
   - R1 passes (`model` AUC 0.65–0.75 at lag 0). R2 fails: the model's error is a denoised latent change, so it does not beat `persistence` or `pixel`. R3 fails. P1 passes or is borderline, P2 fails. Lead times cluster at lag 0.
 - **Framing for the write-up.** An error spike at a merge means the model did not learn when merges happen. Encounter timing is random, so that is expected even of a perfect deterministic model. A usable surprise signal is a finding about the model, not a failure of RQ1.
 - [x] Premise check → `experiments/events/premise.json` (v2; v1 in `premise-v1.json`).
-- [ ] PC: `event_signals.py` → `data/events/signals-v1.npz`, rsync to the Mac.
-- [ ] `event_anticipation.py` → `experiments/events/metrics.json`; write `experiments/events/README.md`. Commit.
-- [ ] Qualitative repeat on real aggregation clips (hand-annotate ~10 visible onsets): one figure. Only if R1 passes.
+- [x] PC: `event_signals.py` → `data/events/signals-v1.npz` (84 clips, 241 merges), rsync to the Mac.
+- [x] `event_anticipation.py` → `experiments/events/metrics.json`; write `experiments/events/README.md`. Commit.
+  **Result 2026-10-24: R1 yes, R2 no, R3 no; P1 yes, P2 no** (`experiments/events/`, test 48 events, val 38). Model AUC at the merge 0.710 [0.618, 0.793] (val 0.667). Paired at lag 0: beats `persistence` +0.075 [+0.033, +0.112], ties `ctxmean` −0.028 [−0.093, +0.023] and `pixel` +0.006 [−0.071, +0.073]. At lag −1 the model is above chance (0.592) but 0.065 below `pixel`, which the two-particle confound already lifts to 0.657: no anticipation. At +1 the model falls back to 0.57 while `ctxmean` and `pixel` stay near 0.70: it adapts after one post-merge frame. Position-free: `pooled_linear` 0.598 [0.524, 0.679], no better than `pooled_change` (+0.010). Val replicates every reading. Predictions right on R1, R3, P1, P2; wrong that the model would not beat `persistence` (it does, by denoising). **Reading: the forecaster's error detects merges as they happen but does not anticipate them, and a context average or a brightness change detects them as well.**
+- [ ] Qualitative repeat on real aggregation clips (hand-annotate ~10 visible onsets): one figure. R1 passed, so it is allowed; with R2 failing it would show what a brightness change already shows. Proposed to skip.
 
 ## Step 13 — Real-data validation
 
