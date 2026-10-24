@@ -151,12 +151,12 @@ def cut_trajectories(traj: dict, ctx: int, starts) -> dict:
     }
 
 
-def ceiling(snip: dict, ctx: int, seed: int) -> dict:
+def ceiling(snip: dict, ctx: int, seed: int, sds: tuple = CEILING_SD) -> dict:
     """Context-only extrapolators' median exponents on one snippet set; ``best_at_sd``
-    is, per process, whichever method lands closer to the truth at the probe's noise."""
+    is, per process, whichever method lands closer to the truth at the last of ``sds``."""
     rng = np.random.default_rng(seed)
     out = {"truth": median_exponents(snip["truth"][:, ctx:], snip, ctx)}
-    for sd in CEILING_SD:
+    for sd in sds:
         noisy = snip["truth"] + rng.normal(0.0, sd, snip["truth"].shape)
         forecasts = context_forecasts(
             np.maximum(noisy, 1.0), snip["truth"], snip["train"], ctx
@@ -164,7 +164,7 @@ def ceiling(snip: dict, ctx: int, seed: int) -> dict:
         out[f"sd_{sd}"] = {
             m: median_exponents(forecasts[m], snip, ctx) for m in CEILING_METHODS
         }
-    at_sd = out[f"sd_{CEILING_SD[-1]}"]
+    at_sd = out[f"sd_{sds[-1]}"]
     out["best_at_sd"] = {
         p: min((at_sd[m][p] for m in CEILING_METHODS), key=lambda e: abs(e - true))
         for p, true in out["truth"].items()
