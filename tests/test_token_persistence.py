@@ -34,3 +34,9 @@ def test_particle_absent_at_either_end_is_not_counted():
     pos, rad = one_particle([40.0, 40.0], [40.0, 40.0])
     rad[0, 1] = 0.0  # left the crop
     assert persistence(pos, rad, ref=0, h=1)["same_cell"].size == 0
+
+
+def test_a_move_across_a_token_border_stays_inside_a_coarser_region():
+    pos, rad = one_particle([40.0, 40.0], [40.0, 60.0])
+    assert persistence(pos, rad, ref=0, h=1)["same_cell"].tolist() == [False]
+    assert persistence(pos, rad, ref=0, h=1, cell=64.0)["same_cell"].tolist() == [True]

@@ -58,26 +58,28 @@ def gt_windows(n_per_process: int, seed: int) -> list[dict]:
     return rows
 
 
-def persistence(pos: np.ndarray, rad: np.ndarray, ref: int, h: int) -> dict:
-    """Per particle visible at ``ref`` and ``ref + h``: same cell, old centre inside
-    the particle, displacement."""
+def persistence(
+    pos: np.ndarray, rad: np.ndarray, ref: int, h: int, cell: float = CELL
+) -> dict:
+    """Per particle visible at ``ref`` and ``ref + h``: same ``cell``-px cell, old
+    centre inside the particle, displacement."""
     seen = (rad[:, ref] > 0) & (rad[:, ref + h] > 0)
     a, b = pos[seen, ref], pos[seen, ref + h]
     moved = np.linalg.norm(b - a, axis=-1)
     return {
-        "same_cell": (np.floor(a / CELL) == np.floor(b / CELL)).all(axis=-1),
+        "same_cell": (np.floor(a / cell) == np.floor(b / cell)).all(axis=-1),
         "inside": moved < rad[seen, ref],
         "displacement": moved,
     }
 
 
-def summarize(rows: list[dict]) -> dict:
+def summarize(rows: list[dict], cell: float = CELL) -> dict:
     out = {}
     for group in (*PROCESSES, "all"):
         sel = [r for r in rows if group in (r["process"], "all")]
         out[group] = {}
         for h in HORIZONS:
-            parts = [persistence(r["pos"], r["rad"], CTX - 1, h) for r in sel]
+            parts = [persistence(r["pos"], r["rad"], CTX - 1, h, cell) for r in sel]
             cat = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
             out[group][f"+{h}"] = {
                 "n_particles": int(cat["same_cell"].size),
@@ -88,11 +90,11 @@ def summarize(rows: list[dict]) -> dict:
     return out
 
 
-def print_report(summary: dict) -> None:
+def print_report(summary: dict, cell: float = CELL) -> None:
     print(f"{'':12s}{'':22s}" + "".join(f"{'+' + str(h):>7s}" for h in HORIZONS))
     for group, by_h in summary.items():
         for i, (key, label) in enumerate((
-            ("same_cell", "same 16 px cell"),
+            ("same_cell", f"same {cell:g} px cell"),
             ("inside", "old centre inside"),
             ("median_displacement_px", "median displacement"),
         )):
@@ -110,7 +112,7 @@ def write_metrics(args, n_windows: int, summary: dict) -> None:
         "stratum": "physics",
         "n_windows": n_windows,
         "crop": CROP,
-        "cell_px": CELL,
+        "cell_px": args.cell,
         "window_starts": STARTS,
         "reference_latent_frame": CTX - 1,
         "frames_per_latent": TUBELET,
@@ -126,11 +128,15 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--n-per-process", type=int, default=200)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument(
+        "--cell", type=float, default=CELL,
+        help="region size in px; 32/64/128 are 2x2/4x4/8x8 blocks of tokens",
+    )
     args = ap.parse_args()
 
     rows = gt_windows(args.n_per_process, args.seed)
-    summary = summarize(rows)
-    print_report(summary)
+    summary = summarize(rows, args.cell)
+    print_report(summary, args.cell)
     write_metrics(args, len(rows), summary)
     print(f"\nwrote {args.out}/metrics.json")
 
