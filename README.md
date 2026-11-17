@@ -21,7 +21,7 @@ Local machine = coding + CPU unit tests + analysis + writing. GPU work (feature 
 LoRA adaptation, predictor/baseline training) runs on the remote 2× RTX 3090 box — see the
 "Two machines, one repo" section of `PLAN.md` and the runbook in [`docs/remote.md`](docs/remote.md).
 
-## Status (2026-10-24)
+## Status (2026-11-16)
 
 Full findings by research question: [`docs/findings.md`](docs/findings.md).
 
@@ -30,6 +30,7 @@ Full findings by research question: [`docs/findings.md`](docs/findings.md).
 - **Gate 2′** (frame-averaged latent): size criterion passes, exponents damped by the context's noise — [`experiments/pooled-forecast/`](experiments/pooled-forecast/README.md), [`experiments/longer-context/`](experiments/longer-context/README.md)
 - **RQ3** (dose): 0.3–0.6 px worse at low dose at every horizon, through the readout — [`experiments/snr/`](experiments/snr/README.md)
 - **RQ2** (merges): the forecaster's error detects merges (AUC 0.71) but does not anticipate them, and simple baselines do as well — [`experiments/events/`](experiments/events/README.md)
+- **Real data** (Step 13): negative. 8 screened published movies + SAM-EM nanorods: none inside the simulated feature distribution, and the forecaster loses to the context mean on every one — [`experiments/real/`](experiments/real/README.md)
 - **Next**: thesis Results draft
 
 ## Tests

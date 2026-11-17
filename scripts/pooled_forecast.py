@@ -89,24 +89,40 @@ def pca_basis(frames: np.ndarray) -> np.ndarray:
     return evecs[:, np.argsort(evals)[::-1][:PCA_DIM]]
 
 
-def linear_candidate(z: np.ndarray, split: dict) -> tuple[np.ndarray, dict]:
-    """Candidate A: ridge from the context's PCA coefficients to every horizon's,
-    lambda picked on val by pooled L1 at +24. Returns z-scored ``(W, 24, D)``."""
+def fit_linear(z: np.ndarray, split: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Candidate A's fit: the PCA basis, the ridge weights (lambda picked on val by
+    pooled L1 at +24) and the fit info."""
     basis = pca_basis(z[split["train"]].reshape(-1, z.shape[-1]))
-    coeffs = z @ basis
-    inputs = np.c_[np.ones(len(z)), coeffs[:, :-HORIZON].reshape(len(z), -1)]
-    targets = coeffs[:, -HORIZON:].reshape(len(z), -1)
+    inputs, targets = linear_inputs(z, basis), (z @ basis)[:, -HORIZON:].reshape(len(z), -1)
     tr, va = split["train"], split["val"]
     gram, cross = inputs[tr].T @ inputs[tr], inputs[tr].T @ targets[tr]
     scores = {}
     for lam in LAMBDAS:
         w = np.linalg.solve(gram + lam * np.eye(len(gram)), cross)
-        last = (inputs[va] @ w).reshape(len(va), HORIZON, PCA_DIM)[:, -1] @ basis.T
+        last = forecast_linear(z[va], basis, w)[:, -1]
         scores[float(lam)] = float(np.abs(last - z[va, -1]).mean())
     lam = min(scores, key=scores.get)
     w = np.linalg.solve(gram + lam * np.eye(len(gram)), cross)
-    forecast = (inputs @ w).reshape(len(z), HORIZON, PCA_DIM) @ basis.T
-    return forecast, {"lambda": lam, "val_l1_at_24_by_lambda": scores}
+    return basis, w, {"lambda": lam, "val_l1_at_24_by_lambda": scores}
+
+
+def linear_inputs(z: np.ndarray, basis: np.ndarray) -> np.ndarray:
+    """Bias plus the context frames' PCA coefficients, one row per snippet."""
+    coeffs = z[:, :-HORIZON] @ basis
+    return np.c_[np.ones(len(z)), coeffs.reshape(len(z), -1)]
+
+
+def forecast_linear(z: np.ndarray, basis: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Candidate A's z-scored ``(W, 24, D)`` forecast of snippets ``(W, ctx + 24, D)``
+    (only the context is read)."""
+    return (linear_inputs(z, basis) @ w).reshape(len(z), HORIZON, -1) @ basis.T
+
+
+def linear_candidate(z: np.ndarray, split: dict) -> tuple[np.ndarray, dict]:
+    """Candidate A: ridge from the context's PCA coefficients to every horizon's.
+    Returns z-scored ``(W, 24, D)`` forecasts and the fit info."""
+    basis, w, info = fit_linear(z, split)
+    return forecast_linear(z, basis, w), info
 
 
 def label_references(readings: np.ndarray, truth: np.ndarray, train) -> dict:

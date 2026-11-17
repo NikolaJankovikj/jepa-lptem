@@ -73,3 +73,11 @@ particle-centre cells at held-out AUC 0.98 (`PLAN.md`, Step 6 cache audit). Leve
 open where it matters: none of this has touched real video yet — that is Step 13, and the
 strata footnote above (real's neighbours are physics-stratum) is still to re-check with
 token-level features.
+
+**Correction 2026-11-16 (`experiments/real/`).** The 0.92 above was measured with the V-JEPA 2
+processor's defaults, which resize a 256 crop to 292 px and centre-crop it back. The pipeline
+switched that resize off on 2026-09-28 (`78d73ae`, Step 6), and this number was never
+re-measured. Re-run on the same video with the pipeline's processor, the ratio is **1.51**
+(0.83 with the old processor on the same samples), against a held-out-synthetic limit of 1.50.
+Seven other bright-field real movies read 3.2–8.6. The reading "real sits on the synthetic
+manifold" does not hold for the preprocessing the model actually uses.

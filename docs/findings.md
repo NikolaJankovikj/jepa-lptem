@@ -1,4 +1,4 @@
-# Where the project stands (2026-10-24, RQ2 added the same day)
+# Where the project stands (2026-11-16, real-data validation added)
 
 The findings so far, by research question. Every number is from an experiment README
 and its `metrics.json`, and each section names its folder under `experiments/`. Each
@@ -12,6 +12,7 @@ which is in git history (`b303d07`).
 | **RQ1.** Do predicted latents decode to correct future physics? | **Partly.** Token-level forecasts fail for a structural reason. A label-free forecaster on the frame-averaged latent carries each clip's growth (size criterion passes), but its exponents are damped. The damping comes from the context's noise, not the model. | §2 |
 | **RQ2.** Does prediction error anticipate coalescence? | **Detects, does not anticipate.** The forecaster's error rises at a merge (AUC 0.71), but no earlier than the pixels show it, and a context average or a brightness change detects merges as well. | §4 |
 | **RQ3.** How does quality degrade with horizon and SNR? | **Strongly with horizon, mildly with dose.** Low dose costs 0.3–0.6 px of mean-radius error at every horizon, through the readout. Not significant at the pre-registered +24, significant post hoc at +1. Context length matters more than dose for exponents. | §3 |
+| **Real data.** Does any of it transfer to real LPTEM video? | **No.** No published real movie lies inside the simulated feature distribution, the readout reads real particles small, and the forecaster loses to the context mean on every real movie from the first step. Claims are scoped to simulation. | §5 |
 
 ## 2. RQ1: forecasts that decode to physics
 
@@ -133,7 +134,35 @@ against patches around particles far from any merge:
   (AUC 0.513). It was recorded, replaced by the token-mean change (0.736) and re-run on
   fresh clips before the PC run.
 
-## 5. Methodological findings
+## 5. Real data (`real/`)
+
+Published supplementary movies, screened before use: 132 movies from 34 LPTEM papers
+(ACS, via figshare). A display copy breaks two premises of the pipeline (one pixel is
+one detector pixel, one frame is one time step), so each movie had to show white shot
+noise on its pixel grid, grey levels, ≥ 16 clean frames and ≥ 256 px, and an
+overlay-free 256² region. **10 of 132 pass**; most were rescaled for display. 8 movies
+from 7 papers were used, plus the SAM-EM Au nanorods.
+
+| check | simulation | real |
+|---|---|---|
+| A. containment ratio (limit 1.50, the largest held-out synthetic clip) | median 0.93 | nanorods **1.51**, six other bright-field movies **3.2–8.6**; HAADF control 2.58 |
+| B. readout ÷ pixel estimator, mean radius | median 1.11, band 0.79–1.74 | 0.46–1.00; 2 of 5 movies in the band |
+| C. sign of growth, readout vs pixels | – | disagree on `am1c` (ρ −0.87 vs +0.79, 35 blocks) |
+| D. forecaster gain over the context mean at +24 | **+0.061 [+0.045, +0.078]** | **−0.418 [−0.511, −0.286]**; negative on every movie, already at +1 |
+
+- **The simulator's appearance range does not cover real LPTEM video.** Only the video
+  it was calibrated on comes near, and that one sits at the limit.
+- **Correction to `latent-gap/`.** Its containment of 0.92 (Step 4k) was measured with
+  the processor's default 256 → 292 resize, which the pipeline dropped on 2026-09-28
+  (`78d73ae`). It was never re-measured. With the pipeline's preprocessing, the same
+  video reads 1.51 (0.83 with the old processor on the same samples).
+- **Nothing downstream transfers.** The forecaster fails at the input, not through
+  extrapolation: real pooled latents change less per step than simulated ones (context
+  mean +1 error 0.30 vs 0.40), but its one-step error doubles (0.65 vs 0.40).
+- Predictions: A wrong (bright-field movies were expected inside), B mostly wrong (the
+  small-particle movies read low, not high), C mixed, D right.
+
+## 6. Methodological findings
 
 1. **The look-ahead leak** (`leak-check/`). Encoding whole 64-frame windows leaks the
    future into a latent forecaster's context. The context latents agreed with honest
@@ -152,8 +181,11 @@ against patches around particles far from any merge:
 4. **Validate every estimator against known answers.** Three simulator statistics were
    nearly tuned to artefacts of their own estimators (`PLAN.md` Step 4). Each was caught
    by pointing the estimator at clips whose answer was known.
+5. **Re-measure a premise when the pipeline under it changes.** The latent containment
+   that justified training on simulation was measured with a preprocessing step the
+   pipeline later dropped. Under the actual preprocessing it fails (§5).
 
-## 6. What the thesis can say now
+## 7. What the thesis can say now
 
 1. A frozen video model never shown a microscope reads nanoparticle size, area and
    diffusion from single frames at R² ≈ 0.9 and the perfect-detector MSD.
@@ -168,12 +200,16 @@ against patches around particles far from any merge:
    simple baselines flag them as well: a deterministic latent forecaster's surprise is not
    a learned event detector here.
 6. The look-ahead leak is a general warning for latent world models on video encoders.
+7. None of this transfers to published real LPTEM video with a frozen encoder. The one
+   experiment the simulator was calibrated on sits at the edge of its range (1.51
+   against a limit of 1.50); no other real movie comes near. Most published movies are not usable as data without screening.
 
-## 7. Open items
+## 8. Open items
 
-- [ ] RQ2 qualitative figure on real aggregation clips: allowed (R1 passed), proposed to skip (R2 failed).
 - [ ] RQ3 thickness half: needs clips that vary mean water thickness, or is stated as out of scope.
-- [ ] Real-data validation (`PLAN.md` Step 13): reduced to one qualitative figure on the SAM-EM Au-nanorod clips. The Jamali raw videos are treated as unavailable (no reply).
+- [x] Real-data validation (`PLAN.md` Step 13): done on 8 screened published movies plus the SAM-EM nanorods (§5). Negative.
+- [ ] Closing the sim-to-real gap: wider appearance randomisation, or LoRA on real video (Step 8). Future Work unless there is time.
+- [ ] RQ2 on real clips: still proposed to skip (needs the token predictor on the PC; §5 shows the inputs are off-manifold anyway).
 - [ ] Pixel ConvLSTM baseline (Step 11): proposed to skip unless asked for.
 - [ ] Branch `worktree-objective-redesign`: an uncommitted, never-run draft (`predictor-obs`), superseded by §2c. Keep or delete.
 - [ ] Delete the leaking whole-window cache on the PC once nothing reads it.
