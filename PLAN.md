@@ -632,6 +632,52 @@ class LatentForecaster(nn.Module):
 - [ ] Advisor review cycle; revise.
 - [ ] Compress to 4–8 pages for NeurIPS AI4Mat / ICLR ML4Materials (check current deadlines when Gate 2 lands).
 
+## Step 15 — Applied ML course project: frozen V-JEPA vs LoRA vs CNN (accepted 2026-11-17)
+
+**Question.** Is the encoder the bottleneck? Three readers of the same per-frame input (one 2-frame tubelet, 256² centre crop), with the same heads and losses, scored on the same test clips:
+
+| | encoder | trained |
+|---|---|---|
+| **F** frozen | V-JEPA 2 ViT-L, frozen | probes only (`gate1-perframe/probes.pt` exists at 100 %) |
+| **L** LoRA | V-JEPA 2 ViT-L + LoRA (`peft`, r 16, α 32, qkv/proj) | LoRA + probes, end to end, on the probe losses |
+| **C** CNN | small conv net, stride 16 → 16×16×C token map, ~1–5 M params | everything, from scratch |
+
+Heads: `AttentiveProbe` and `CentroidProbe` with `dim` = the encoder's width, the targets and losses of `train_probes.py` (`attentive_targets`, `centroid_targets`, `split_by_clip` seed 0). Only the encoder changes.
+
+**Scoring** (test, physics stratum; clip-bootstrap 95 % CIs, 2000 draws, seed 0): R² count / mean radius / total area; detection F1 and matched distance (px), threshold picked on val; MSD/4Dt through `eval_centroid_msd` against the perfect-detector ceiling (0.955); the **mean-radius reading sd** overall and per dose bin (`snr/` split at 21.2 e/px). Data efficiency: each model at 10 / 30 / 100 % of the train clips, same val and test.
+
+**M0 — premise check, done 2026-11-17 (Mac, seconds).** `exponent_ceiling.py` with reading sd 0, 0.2, 0.4, 0.6, 0.8 px (scratch run, not committed). Best context-only exponent (kNN), diffusion / reaction, against the truth 0.333 / 0.499 and the ±0.1 bar:
+
+| reading sd (px) | context 8 | context 16 |
+|---|---|---|
+| 0.0 | 0.339 / 0.494 | 0.343 / 0.489 |
+| 0.2 | 0.338 / 0.420 | 0.363 / 0.459 |
+| 0.4 | 0.319 / 0.328 ✘ | 0.352 / 0.419 ✔ |
+| 0.6 | 0.285 / 0.278 ✘ | 0.335 / 0.401 ✔ |
+| 0.8 | 0.234 / 0.262 ✘ | 0.317 / 0.367 ✘ |
+
+Reading: at context 8 the bar needs reading noise near 0.2 px, 4× below today's; at context 16 a drop to ~0.6 px is enough. So a better encoder can matter for growth, but only together with the longer context. This fixes the thesis link below.
+
+**Predictions (fixed before any M3 number).**
+1. C ≥ F on count at 100 % (F: 0.726); finding blobs is a CNN's home ground.
+2. F > C at 10 % on count and mean radius (pretraining pays when labels are few).
+3. L ≥ F and L ≥ C on every R² at 100 %.
+4. L's mean-radius reading sd is below F's, but by less than half; the low-dose penalty shrinks but stays.
+5. MSD/4Dt for all three within 10 % of the ceiling (positions are already easy).
+
+**Thesis link (decided now, run later).** If L's reading sd (physics, test) is ≤ 0.6 px, re-extract the pooled cache with L and rerun the `longer-context/` linear candidate at context 16; that is a thesis experiment, pre-registered separately. Above 0.6 px, the reading is: the encoder is not what limits growth recovery.
+
+**Steps**
+- [x] M0 ceiling sweep (above).
+- [ ] M1 (Mac): a raw-tubelet dataset that reads clips from `dynamics-v1`, crops and aligns as `extract_features.py`, and yields targets through the existing `train_probes.py` functions. Test: targets match the cache's on the smoke clips.
+- [ ] M2 (Mac): C and L trained end to end on `smoke_v3`, a few epochs; loss falls, the scoring runs end to end. L: assert trainable params < 10 M; V-JEPA's processor without the 292 px resize, as in Step 6.
+- [ ] M3 (PC): C and L at 10 / 30 / 100 %; F retrained at 10 / 30 % on the cache. Data loaders in parallel workers (Gate 1 was disk-bound at ~10 % GPU).
+- [ ] M4 (Mac): `experiments/encoder-compare/README.md` and `metrics.json`; predictions marked right / wrong.
+- [ ] Reported, not judged: Step 13 check B (readout ÷ pixel radius on the real movies) for each model.
+- **Stretch, only if time:** L-ssl, LoRA trained on V-JEPA's own masked-latent objective (the original Step 8 plan), then frozen + probes. It answers whether *label-free* adaptation helps, which is the thesis-relevant version.
+
+**Budget.** ~1.5 weeks: M1–M2 3–4 days on the Mac, M3 2–3 GPU days, M4 1–2 days. L-ssl adds ~1 week.
+
 ---
 
 ## Decision gates recap
