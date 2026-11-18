@@ -669,7 +669,7 @@ Reading: at context 8 the bar needs reading noise near 0.2 px, 4× below today's
 
 **Steps**
 - [x] M0 ceiling sweep (above).
-- [ ] M1 (Mac): a raw-tubelet dataset that reads clips from `dynamics-v1`, crops and aligns as `extract_features.py`, and yields targets through the existing `train_probes.py` functions. Test: targets match the cache's on the smoke clips.
+- [x] M1 (Mac): a raw-tubelet dataset that reads clips from `dynamics-v1`, crops and aligns as `extract_features.py`, and yields targets through the existing `train_probes.py` functions. Test: targets match the cache's on the smoke clips. **Done 2026-11-18:** `scripts/tubelet_cache.py` writes the crops once as an uncompressed memory map (`frames.npy`, ~13 GB for dynamics-v1) plus `gt.npz`; `TubeletSet` serves one tubelet per item. `tests/test_tubelet_cache.py`; on `smoke_v3` all 25 cache windows match the tubelet ground truth exactly.
 - [ ] M2 (Mac): C and L trained end to end on `smoke_v3`, a few epochs; loss falls, the scoring runs end to end. L: assert trainable params < 10 M; V-JEPA's processor without the 292 px resize, as in Step 6.
 - [ ] M3 (PC): C and L at 10 / 30 / 100 %; F retrained at 10 / 30 % on the cache. Data loaders in parallel workers (Gate 1 was disk-bound at ~10 % GPU).
 - [ ] M4 (Mac): `experiments/encoder-compare/README.md` and `metrics.json`; predictions marked right / wrong.
