@@ -111,8 +111,8 @@ class TubeletSet:
     def __init__(self, root: Path, clips: set[str] | None = None):
         self.frames = np.load(root / "frames.npy", mmap_mode="r")
         gt = np.load(root / "gt.npz")
-        self.attentive, self.occupancy, self.offsets = (
-            gt[k] for k in ("attentive", "occupancy", "offsets")
+        self.attentive, self.occupancy, self.offsets, self.positions, self.radii = (
+            gt[k] for k in ("attentive", "occupancy", "offsets", "positions", "radii")
         )
         self.meta = [json.loads(line) for line in (root / "meta.jsonl").open()]
         rows = [
@@ -128,7 +128,7 @@ class TubeletSet:
         c, t = self.index[k]
         return (
             np.array(self.frames[c, TUBELET * t : TUBELET * (t + 1)]),
-            self.attentive[c, t],
+            self.attentive[c, t].astype(np.float32),
             self.occupancy[c, t],
             self.offsets[c, t],
         )

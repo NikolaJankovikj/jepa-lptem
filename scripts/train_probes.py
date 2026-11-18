@@ -140,6 +140,22 @@ class WindowCache:
 # --------------------------------- training -----------------------------------
 
 
+def probe_loss(predicted, target, bce):
+    """Gate-1 objective on ``(observables, occupancy, offsets)`` pairs: z-scored
+    MSE on the observables, pos-weighted BCE on occupancy, L2 on the offsets of
+    occupied cells only."""
+    import torch
+
+    pred, occ_p, off_p = predicted
+    y, occ_y, off_y = target
+    mask = occ_y.unsqueeze(-1)
+    return (
+        torch.nn.functional.mse_loss(pred, y)
+        + bce(occ_p, occ_y)
+        + ((off_p - off_y) ** 2 * mask).sum() / mask.sum().clamp(min=1.0)
+    )
+
+
 def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
     import torch
 
@@ -177,12 +193,7 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
 
             pred = att(x)
             occ_p, off_p = cen(x)
-            mask = occ_y.unsqueeze(-1)
-            loss = (
-                torch.nn.functional.mse_loss(pred, y)
-                + bce(occ_p, occ_y)
-                + ((off_p - off_y) ** 2 * mask).sum() / mask.sum().clamp(min=1.0)
-            )
+            loss = probe_loss((pred, occ_p, off_p), (y, occ_y, off_y), bce)
             opt.zero_grad()
             loss.backward()
             opt.step()
