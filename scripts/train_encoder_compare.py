@@ -32,7 +32,14 @@ import torch
 from extract_features import MODEL_NAME, TUBELET, pick_device, window_starts
 from torch import nn
 from torch.utils.data import DataLoader
-from train_probes import GRID, OBS_NAMES, probe_loss, r_squared, split_by_clip
+from train_probes import (
+    GRID,
+    OBS_NAMES,
+    probe_loss,
+    r_squared,
+    split_by_clip,
+    train_clips,
+)
 from tubelet_cache import TubeletSet
 
 from jepa_lptem.eval.centroid_eval import eval_centroid_msd, pick_threshold
@@ -134,10 +141,12 @@ class Reader(nn.Module):
     def optimizer(self, name: str) -> torch.optim.Optimizer:
         enc = [p for p in self.encoder.parameters() if p.requires_grad]
         heads = [*self.att.parameters(), *self.cen.parameters()]
-        return torch.optim.AdamW([
-            {"params": enc, "lr": ENCODER_LR[name]},
-            {"params": heads, "lr": HEAD_LR},
-        ])
+        return torch.optim.AdamW(
+            [
+                {"params": enc, "lr": ENCODER_LR[name]},
+                {"params": heads, "lr": HEAD_LR},
+            ]
+        )
 
 
 # --------------------------------- training -----------------------------------
@@ -175,14 +184,6 @@ class Objective:
         y = (att.float() - mu) / sd
         predicted = (pred.float(), occ_p.float(), off_p.float())
         return probe_loss(predicted, (y, occ.float(), off.float()), self.bce)
-
-
-def train_clips(split: dict, frac: float, seed: int) -> set[str]:
-    """The first ``frac`` of the train clips in a seeded order: 10 % is a subset
-    of 30 %, which is a subset of 100 %."""
-    clips = sorted(split["train"])
-    order = np.random.default_rng(seed).permutation(len(clips))
-    return {clips[i] for i in order[: max(1, math.ceil(frac * len(clips)))]}
 
 
 def run_epoch(model: Reader, loader, objective: Objective, opt=None) -> float:
@@ -254,9 +255,9 @@ class Windowing:
     def frame_index(self, n_lat_total: int) -> np.ndarray:
         """Latent frames of all windows, concatenated: overlaps repeat, as in
         Gate 1's per-window R²."""
-        return np.concatenate([
-            np.arange(s.start, s.stop) for s in self.slices(n_lat_total)
-        ])
+        return np.concatenate(
+            [np.arange(s.start, s.stop) for s in self.slices(n_lat_total)]
+        )
 
 
 def windows_of(pred, ds: TubeletSet, row: int, win: Windowing):

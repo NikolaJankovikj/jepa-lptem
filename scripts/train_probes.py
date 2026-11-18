@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -97,6 +98,14 @@ def split_by_clip(clip_names: list[str], seed: int = 0):
     test = {clips[i] for i in order[n_val : n_val + n_test]}
     train = set(clips) - val - test
     return {"train": train, "val": val, "test": test}
+
+
+def train_clips(split: dict, frac: float, seed: int) -> set[str]:
+    """The first ``frac`` of the train clips in a seeded order: 10 % is a subset
+    of 30 %, which is a subset of 100 %."""
+    clips = sorted(split["train"])
+    order = np.random.default_rng(seed).permutation(len(clips))
+    return {clips[i] for i in order[: max(1, math.ceil(frac * len(clips)))]}
 
 
 def r_squared(pred: np.ndarray, true: np.ndarray) -> float:
@@ -163,10 +172,12 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
     # Target statistics + BCE pos-weight from the train split only.
     t_all = np.concatenate([attentive_targets(cache.load_gt(i)[1]) for i in idx_train])
     mu, sd = t_all.mean(axis=0), t_all.std(axis=0) + 1e-9
-    occ_frac = np.mean([
-        centroid_targets(*cache.load_gt(i), cache.meta[i]["crop"])[0].mean()
-        for i in idx_train[:4]
-    ])
+    occ_frac = np.mean(
+        [
+            centroid_targets(*cache.load_gt(i), cache.meta[i]["crop"])[0].mean()
+            for i in idx_train[:4]
+        ]
+    )
     pos_weight = torch.tensor(
         (1.0 - occ_frac) / max(occ_frac, 1e-4), dtype=torch.float32, device=device
     )
@@ -203,6 +214,18 @@ def train_probes(cache, idx_train, device, epochs, lr=1e-3, seed=0):
     return att, cen, (mu, sd)
 
 
+def load_probes(path: Path, device):
+    """Probes saved by an earlier run, ready to score."""
+    import torch
+
+    state = torch.load(path, map_location=device, weights_only=False)
+    att = AttentiveProbe(out_dim=3).to(device)
+    cen = CentroidProbe(grid=GRID).to(device)
+    att.load_state_dict(state["attentive"])
+    cen.load_state_dict(state["centroid"])
+    return att, cen, state["norm"]
+
+
 # -------------------------------- evaluation ----------------------------------
 
 
@@ -229,6 +252,24 @@ def eval_attentive(att, cache, idx, norm, device):
     return out
 
 
+def clip_predictions(att, cache, idx, norm, device) -> dict:
+    """Observables per clip ``(T_lat of the clip, 3)``, stitched from its windows
+    at ``start / frames_per_latent``; per-frame features make overlaps identical."""
+    import torch
+
+    mu, sd = norm
+    att.eval()
+    out = {}
+    for i in idx:
+        feats, _, _, meta = cache.load(i)
+        with torch.no_grad():
+            p = att(torch.from_numpy(feats).to(device)).cpu().numpy() * sd + mu
+        t0 = meta["start"] // meta["frames_per_latent"]
+        clip = out.setdefault(meta["clip"], {})
+        clip.update({t0 + k: row for k, row in enumerate(p)})
+    return {c: np.stack([v[t] for t in sorted(v)]) for c, v in out.items()}
+
+
 def probe_windows(cen, cache, idx, device):
     """Yield ``(occ_prob (T,G,G), offsets (T,G,G,2), GT centroids per frame, meta)``."""
     import torch
@@ -248,6 +289,10 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--train-frac", type=float, default=1.0)
+    ap.add_argument(
+        "--probes", type=Path, help="score these trained probes instead of training"
+    )
     args = ap.parse_args()
 
     import torch
@@ -263,6 +308,7 @@ def main() -> None:
     cache = WindowCache(args.features)
     clip_of = [m["clip"] for m in cache.meta]
     split = split_by_clip(clip_of, seed=args.seed)
+    split["train"] = train_clips(split, args.train_frac, args.seed)
     idx = {k: [i for i, c in enumerate(clip_of) if c in v] for k, v in split.items()}
     n_coll = sum(
         centroid_targets(*cache.load_gt(i), cache.meta[i]["crop"])[2]
@@ -274,13 +320,18 @@ def main() -> None:
         f"(by clip)  cell collisions in train targets: {n_coll}  device: {device}"
     )
 
-    att, cen, norm = train_probes(
-        cache, idx["train"], device, args.epochs, seed=args.seed
-    )
+    if args.probes:
+        att, cen, norm = load_probes(args.probes, device)
+    else:
+        att, cen, norm = train_probes(
+            cache, idx["train"], device, args.epochs, seed=args.seed
+        )
 
     metrics = {
         "n_windows": len(cache.files),
         "epochs": args.epochs,
+        "train_frac": args.train_frac,
+        "probes": str(args.probes) if args.probes else None,
         "split": {k: sorted(v) for k, v in split.items()},
     }
     threshold = pick_threshold(probe_windows(cen, cache, idx["val"], device))
@@ -299,6 +350,12 @@ def main() -> None:
     torch.save(
         {"attentive": att.state_dict(), "centroid": cen.state_dict(), "norm": norm},
         args.out / "probes.pt",
+    )
+    preds = clip_predictions(att, cache, idx["val"] + idx["test"], norm, device)
+    np.savez(
+        args.out / "preds.npz",
+        clips=np.array(list(preds)),
+        attentive=np.stack(list(preds.values())),
     )
     (args.out / "metrics.json").write_text(json.dumps(metrics, indent=2))
     print(f"\nwrote {args.out}/probes.pt and metrics.json")

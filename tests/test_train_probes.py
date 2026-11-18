@@ -114,3 +114,22 @@ def test_edge_counts_count_particles_straddling_the_crop_border():
     assert edge_counts(pos, crop=256).tolist() == [0, 1, 2]
     far = np.array([[[128.0, 300.0]]])                       # well outside: not ambiguous
     assert edge_counts(far, crop=256).tolist() == [0]
+
+
+def test_clip_predictions_stitch_windows_by_start():
+    from train_probes import clip_predictions
+
+    class Cache:  # two overlapping windows of one clip: latents 0-3 and 2-5
+        def load(self, i):
+            t0 = 2 * i
+            feats = np.arange(t0, t0 + 4, dtype=np.float32)[:, None, None]
+            meta = {"clip": "c", "start": 2 * t0, "frames_per_latent": 2}
+            return feats, None, None, meta
+
+    def att(x):  # reads the latent index back out
+        return x[:, 0, :].repeat(1, 3)
+
+    att.eval = lambda: None
+    out = clip_predictions(att, Cache(), [0, 1], (np.zeros(3), np.ones(3)), "cpu")
+    assert out["c"].shape == (6, 3)
+    assert np.allclose(out["c"][:, 0], np.arange(6))

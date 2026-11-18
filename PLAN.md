@@ -672,6 +672,23 @@ Reading: at context 8 the bar needs reading noise near 0.2 px, 4× below today's
 - [x] M1 (Mac): a raw-tubelet dataset that reads clips from `dynamics-v1`, crops and aligns as `extract_features.py`, and yields targets through the existing `train_probes.py` functions. Test: targets match the cache's on the smoke clips. **Done 2026-11-18:** `scripts/tubelet_cache.py` writes the crops once as an uncompressed memory map (`frames.npy`, ~13 GB for dynamics-v1) plus `gt.npz`; `TubeletSet` serves one tubelet per item. `tests/test_tubelet_cache.py`; on `smoke_v3` all 25 cache windows match the tubelet ground truth exactly.
 - [x] M2 (Mac): C and L trained end to end on `smoke_v3`, a few epochs; loss falls, the scoring runs end to end. L: assert trainable params < 10 M; V-JEPA's processor without the 292 px resize, as in Step 6. **Done 2026-11-18:** `scripts/train_encoder_compare.py` (`--model cnn|lora`, `--train-frac`), the Gate-1 loss shared with `train_probes.py` as `probe_loss`, checkpoint at the lowest val loss, scoring on the cache's windows. C: 1.51 M parameters, 8 epochs in 32 s, train loss 4.18 → 0.65, val 2.82 → 0.64. L: 7.62 M trainable (LoRA r 16 on q/k/v/proj of all 24 layers + heads), 2 epochs on 30 % of the clips in 3 min. **At init L's tokens equal the per-frame frozen encoder's (cosine 1.00000)**, and `vjepa_input` matches the cache's processor (test), so F and L start from the same features. Smoke R² is negative on its 2 test clips; it checks that the pipeline runs, not a number.
 - [ ] M3 (PC): C and L at 10 / 30 / 100 %; F retrained at 10 / 30 % on the cache. Data loaders in parallel workers (Gate 1 was disk-bound at ~10 % GPU).
+  - **Fixed 2026-11-18, before any M3 number.** Every model sees the same number of training samples at every fraction: epochs × 1/frac (10 % runs 10× the epochs of 100 %). Subsets are nested (`train_clips`, seed 0) and identical across models (checked on `smoke_v3`). F at 100 % is the Gate-1 probes, re-scored without retraining (`--probes`), at 50 epochs, so F's budget is 50 / 167 / 500. C: 20 / 67 / 200. L: E / 3.3E / 10E, with E from the timing run (target ≤ 4 h at 100 %). Batch 32 for all.
+  - **Runbook** (`docs/remote.md` conventions: GPU 1 after `nvidia-smi`, tmux, `python -u`, `tee`):
+    ```bash
+    git pull && export CUDA_DEVICE_ORDER=PCI_BUS_ID
+    uv run python scripts/tubelet_cache.py --data data/dynamics-v1 --out data/tubelets/dynamics-v1   # ~13 GB, CPU
+    R="CUDA_VISIBLE_DEVICES=1 uv run python -u"
+    # F: re-score Gate 1's probes (minutes), then retrain at 10 / 30 % (disk-bound, ~10 % GPU; can share the card)
+    $R scripts/train_probes.py --features data/features/dynamics-v1-perframe --probes experiments/gate1-perframe/probes.pt --out experiments/encoder-compare/frozen-100
+    $R scripts/train_probes.py --features data/features/dynamics-v1-perframe --train-frac 0.3 --epochs 167 --out experiments/encoder-compare/frozen-30
+    $R scripts/train_probes.py --features data/features/dynamics-v1-perframe --train-frac 0.1 --epochs 500 --out experiments/encoder-compare/frozen-10
+    # L timing: one epoch on 10 % -> sets E
+    $R scripts/train_encoder_compare.py --model lora --tubelets data/tubelets/dynamics-v1 --train-frac 0.1 --epochs 1 --workers 8 --out experiments/encoder-compare/lora-timing
+    # C and L, each fraction (frac / epochs as fixed above)
+    $R scripts/train_encoder_compare.py --model cnn  --tubelets data/tubelets/dynamics-v1 --train-frac 1.0 --epochs 20 --workers 8 --out experiments/encoder-compare/cnn-100
+    $R scripts/train_encoder_compare.py --model lora --tubelets data/tubelets/dynamics-v1 --train-frac 1.0 --epochs E  --workers 8 --out experiments/encoder-compare/lora-100
+    ```
+    Each command goes in its own `tmux new -d -s <name> ... 2>&1 | tee logs/<name>.log`. rsync `experiments/encoder-compare/` back; `*.pt` stays out of git.
 - [ ] M4 (Mac): `experiments/encoder-compare/README.md` and `metrics.json`; predictions marked right / wrong.
 - [ ] Reported, not judged: Step 13 check B (readout ÷ pixel radius on the real movies) for each model.
 - **Stretch, only if time:** L-ssl, LoRA trained on V-JEPA's own masked-latent objective (the original Step 8 plan), then frozen + probes. It answers whether *label-free* adaptation helps, which is the thesis-relevant version.

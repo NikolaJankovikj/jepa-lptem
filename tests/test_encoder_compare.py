@@ -8,7 +8,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from extract_features import load_processor
-from train_encoder_compare import TubeletCNN, Windowing, train_clips, vjepa_input
+from train_encoder_compare import TubeletCNN, Windowing, vjepa_input
+from train_probes import train_clips
 
 
 def test_vjepa_input_matches_the_cache_processor():
