@@ -1,0 +1,1612 @@
+{
+  "val": {
+    "r2_count": 0.5152178823098212,
+    "r2_count_physics": 0.44723213307503373,
+    "r2_mean_radius": 0.8418615179399055,
+    "r2_mean_radius_physics": 0.844081838071065,
+    "r2_total_area": 0.890364143540105,
+    "r2_total_area_physics": 0.8834953302569779,
+    "threshold": 0.9,
+    "det_precision": 0.9057994041708044,
+    "det_recall": 0.7897589526910023,
+    "msd_windows_unlinkable": 0,
+    "msd_ratio_pooled": 0.9301338026193917,
+    "msd_windows_used": 149,
+    "track_coverage_mean": 0.09607913168719166,
+    "msd_ratio_pooled_gt": 0.9678595606475537,
+    "msd_windows_used_gt": 296,
+    "track_coverage_mean_gt": 0.32796926556746425
+  },
+  "test": {
+    "r2_count": 0.7317440450740869,
+    "r2_count_physics": 0.66111373503554,
+    "r2_mean_radius": 0.8363880094570759,
+    "r2_mean_radius_physics": 0.8642294902131754,
+    "r2_total_area": 0.9175607178421925,
+    "r2_total_area_physics": 0.9095540420318413,
+    "threshold": 0.9,
+    "det_precision": 0.9060325879638881,
+    "det_recall": 0.8285657330808333,
+    "msd_windows_unlinkable": 0,
+    "msd_ratio_pooled": 0.9658557609934918,
+    "msd_windows_used": 169,
+    "track_coverage_mean": 0.10602311428594494,
+    "msd_ratio_pooled_gt": 0.9547190865910725,
+    "msd_windows_used_gt": 288,
+    "track_coverage_mean_gt": 0.3303590334293853
+  },
+  "model": "cnn",
+  "train_frac": 0.1,
+  "n_train_clips": 160,
+  "n_trainable": 1505414,
+  "split": {
+    "train": [
+      "clip_0014_coalescence_physics",
+      "clip_0023_static_physics",
+      "clip_0050_ripening_experiment",
+      "clip_0060_ripening_physics",
+      "clip_0067_reaction_experiment",
+      "clip_0083_static_physics",
+      "clip_0107_reaction_physics",
+      "clip_0116_diffusion_physics",
+      "clip_0120_ripening_physics",
+      "clip_0129_coalescence_physics",
+      "clip_0157_reaction_physics",
+      "clip_0178_static_physics",
+      "clip_0188_static_experiment",
+      "clip_0207_reaction_physics",
+      "clip_0216_diffusion_physics",
+      "clip_0237_reaction_physics",
+      "clip_0243_static_physics",
+      "clip_0247_reaction_physics",
+      "clip_0250_ripening_experiment",
+      "clip_0280_ripening_physics",
+      "clip_0315_ripening_physics",
+      "clip_0333_static_physics",
+      "clip_0337_reaction_physics",
+      "clip_0339_coalescence_physics",
+      "clip_0343_static_physics",
+      "clip_0403_static_physics",
+      "clip_0404_coalescence_physics",
+      "clip_0421_diffusion_experiment",
+      "clip_0423_static_physics",
+      "clip_0442_reaction_experiment",
+      "clip_0444_coalescence_physics",
+      "clip_0449_coalescence_physics",
+      "clip_0468_static_physics",
+      "clip_0500_ripening_experiment",
+      "clip_0507_reaction_physics",
+      "clip_0512_reaction_physics",
+      "clip_0519_coalescence_physics",
+      "clip_0523_static_physics",
+      "clip_0540_ripening_physics",
+      "clip_0542_reaction_experiment",
+      "clip_0544_coalescence_physics",
+      "clip_0550_ripening_experiment",
+      "clip_0552_reaction_physics",
+      "clip_0555_ripening_physics",
+      "clip_0565_ripening_physics",
+      "clip_0574_coalescence_physics",
+      "clip_0579_coalescence_physics",
+      "clip_0582_reaction_physics",
+      "clip_0596_diffusion_experiment",
+      "clip_0598_static_physics",
+      "clip_0600_ripening_experiment",
+      "clip_0603_static_physics",
+      "clip_0630_ripening_physics",
+      "clip_0644_coalescence_physics",
+      "clip_0646_diffusion_experiment",
+      "clip_0670_ripening_physics",
+      "clip_0713_static_experiment",
+      "clip_0726_diffusion_physics",
+      "clip_0728_static_physics",
+      "clip_0732_reaction_physics",
+      "clip_0745_ripening_physics",
+      "clip_0746_diffusion_experiment",
+      "clip_0760_ripening_physics",
+      "clip_0770_ripening_physics",
+      "clip_0777_reaction_physics",
+      "clip_0778_static_physics",
+      "clip_0786_diffusion_physics",
+      "clip_0795_ripening_physics",
+      "clip_0811_diffusion_physics",
+      "clip_0963_static_experiment",
+      "clip_0970_ripening_physics",
+      "clip_0977_reaction_physics",
+      "clip_0987_reaction_physics",
+      "clip_1027_reaction_physics",
+      "clip_1037_reaction_physics",
+      "clip_1050_ripening_experiment",
+      "clip_1064_coalescence_physics",
+      "clip_1082_reaction_physics",
+      "clip_1084_coalescence_experiment",
+      "clip_1106_diffusion_physics",
+      "clip_1125_ripening_experiment",
+      "clip_1142_reaction_experiment",
+      "clip_1143_static_physics",
+      "clip_1176_diffusion_physics",
+      "clip_1181_diffusion_physics",
+      "clip_1184_coalescence_experiment",
+      "clip_1237_reaction_physics",
+      "clip_1241_diffusion_physics",
+      "clip_1254_coalescence_physics",
+      "clip_1273_static_physics",
+      "clip_1280_ripening_physics",
+      "clip_1284_coalescence_experiment",
+      "clip_1324_coalescence_physics",
+      "clip_1325_ripening_experiment",
+      "clip_1330_ripening_physics",
+      "clip_1340_ripening_physics",
+      "clip_1352_reaction_physics",
+      "clip_1361_diffusion_physics",
+      "clip_1370_ripening_physics",
+      "clip_1391_diffusion_physics",
+      "clip_1400_ripening_experiment",
+      "clip_1407_reaction_physics",
+      "clip_1417_reaction_experiment",
+      "clip_1422_reaction_physics",
+      "clip_1432_reaction_physics",
+      "clip_1448_static_physics",
+      "clip_1451_diffusion_physics",
+      "clip_1456_diffusion_physics",
+      "clip_1472_reaction_physics",
+      "clip_1481_diffusion_physics",
+      "clip_1482_reaction_physics",
+      "clip_1496_diffusion_experiment",
+      "clip_1499_coalescence_physics",
+      "clip_1514_coalescence_physics",
+      "clip_1525_ripening_experiment",
+      "clip_1530_ripening_physics",
+      "clip_1537_reaction_physics",
+      "clip_1543_static_physics",
+      "clip_1557_reaction_physics",
+      "clip_1565_ripening_physics",
+      "clip_1567_reaction_experiment",
+      "clip_1573_static_physics",
+      "clip_1574_coalescence_physics",
+      "clip_1576_diffusion_physics",
+      "clip_1583_static_physics",
+      "clip_1596_diffusion_experiment",
+      "clip_1621_diffusion_experiment",
+      "clip_1652_reaction_physics",
+      "clip_1668_static_physics",
+      "clip_1706_diffusion_physics",
+      "clip_1724_coalescence_physics",
+      "clip_1730_ripening_physics",
+      "clip_1741_diffusion_physics",
+      "clip_1747_reaction_physics",
+      "clip_1754_coalescence_physics",
+      "clip_1758_static_physics",
+      "clip_1767_reaction_experiment",
+      "clip_1771_diffusion_experiment",
+      "clip_1773_static_physics",
+      "clip_1794_coalescence_physics",
+      "clip_1796_diffusion_experiment",
+      "clip_1808_static_physics",
+      "clip_1829_coalescence_physics",
+      "clip_1831_diffusion_physics",
+      "clip_1836_diffusion_physics",
+      "clip_1841_diffusion_physics",
+      "clip_1846_diffusion_experiment",
+      "clip_1868_static_physics",
+      "clip_1899_coalescence_physics",
+      "clip_1908_static_physics",
+      "clip_1922_reaction_physics",
+      "clip_1927_reaction_physics",
+      "clip_1937_reaction_physics",
+      "clip_1941_diffusion_physics",
+      "clip_1951_diffusion_physics",
+      "clip_1958_static_physics",
+      "clip_1963_static_experiment",
+      "clip_1971_diffusion_experiment",
+      "clip_1986_diffusion_physics",
+      "clip_1992_reaction_experiment"
+    ],
+    "val": [
+      "clip_0012_reaction_physics",
+      "clip_0020_ripening_physics",
+      "clip_0041_diffusion_physics",
+      "clip_0068_static_physics",
+      "clip_0070_ripening_physics",
+      "clip_0072_reaction_physics",
+      "clip_0077_reaction_physics",
+      "clip_0091_diffusion_physics",
+      "clip_0098_static_physics",
+      "clip_0131_diffusion_physics",
+      "clip_0135_ripening_physics",
+      "clip_0144_coalescence_physics",
+      "clip_0145_ripening_physics",
+      "clip_0177_reaction_physics",
+      "clip_0193_static_physics",
+      "clip_0213_static_experiment",
+      "clip_0238_static_experiment",
+      "clip_0279_coalescence_physics",
+      "clip_0285_ripening_physics",
+      "clip_0289_coalescence_physics",
+      "clip_0292_reaction_experiment",
+      "clip_0297_reaction_physics",
+      "clip_0305_ripening_physics",
+      "clip_0326_diffusion_physics",
+      "clip_0335_ripening_physics",
+      "clip_0336_diffusion_physics",
+      "clip_0350_ripening_experiment",
+      "clip_0354_coalescence_physics",
+      "clip_0357_reaction_physics",
+      "clip_0360_ripening_physics",
+      "clip_0365_ripening_physics",
+      "clip_0382_reaction_physics",
+      "clip_0385_ripening_physics",
+      "clip_0416_diffusion_physics",
+      "clip_0419_coalescence_physics",
+      "clip_0420_ripening_physics",
+      "clip_0443_static_physics",
+      "clip_0445_ripening_physics",
+      "clip_0450_ripening_experiment",
+      "clip_0463_static_experiment",
+      "clip_0470_ripening_physics",
+      "clip_0474_coalescence_physics",
+      "clip_0495_ripening_physics",
+      "clip_0498_static_physics",
+      "clip_0513_static_experiment",
+      "clip_0517_reaction_experiment",
+      "clip_0522_reaction_physics",
+      "clip_0545_ripening_physics",
+      "clip_0557_reaction_physics",
+      "clip_0558_static_physics",
+      "clip_0567_reaction_experiment",
+      "clip_0572_reaction_physics",
+      "clip_0612_reaction_physics",
+      "clip_0620_ripening_physics",
+      "clip_0627_reaction_physics",
+      "clip_0635_ripening_physics",
+      "clip_0642_reaction_experiment",
+      "clip_0655_ripening_physics",
+      "clip_0665_ripening_physics",
+      "clip_0671_diffusion_experiment",
+      "clip_0672_reaction_physics",
+      "clip_0676_diffusion_physics",
+      "clip_0683_static_physics",
+      "clip_0684_coalescence_experiment",
+      "clip_0733_static_physics",
+      "clip_0734_coalescence_experiment",
+      "clip_0749_coalescence_physics",
+      "clip_0753_static_physics",
+      "clip_0765_ripening_physics",
+      "clip_0776_diffusion_physics",
+      "clip_0798_static_physics",
+      "clip_0801_diffusion_physics",
+      "clip_0809_coalescence_experiment",
+      "clip_0830_ripening_physics",
+      "clip_0832_reaction_physics",
+      "clip_0843_static_physics",
+      "clip_0854_coalescence_physics",
+      "clip_0859_coalescence_experiment",
+      "clip_0864_coalescence_physics",
+      "clip_0872_reaction_physics",
+      "clip_0878_static_physics",
+      "clip_0892_reaction_experiment",
+      "clip_0894_coalescence_physics",
+      "clip_0906_diffusion_physics",
+      "clip_0924_coalescence_physics",
+      "clip_0930_ripening_physics",
+      "clip_0934_coalescence_experiment",
+      "clip_0935_ripening_physics",
+      "clip_0948_static_physics",
+      "clip_0949_coalescence_physics",
+      "clip_0961_diffusion_physics",
+      "clip_0978_static_physics",
+      "clip_0991_diffusion_physics",
+      "clip_1002_reaction_physics",
+      "clip_1012_reaction_physics",
+      "clip_1029_coalescence_physics",
+      "clip_1030_ripening_physics",
+      "clip_1032_reaction_physics",
+      "clip_1073_static_physics",
+      "clip_1086_diffusion_physics",
+      "clip_1087_reaction_physics",
+      "clip_1093_static_physics",
+      "clip_1095_ripening_physics",
+      "clip_1098_static_physics",
+      "clip_1123_static_physics",
+      "clip_1135_ripening_physics",
+      "clip_1165_ripening_physics",
+      "clip_1166_diffusion_physics",
+      "clip_1170_ripening_physics",
+      "clip_1180_ripening_physics",
+      "clip_1190_ripening_physics",
+      "clip_1192_reaction_experiment",
+      "clip_1210_ripening_physics",
+      "clip_1223_static_physics",
+      "clip_1233_static_physics",
+      "clip_1236_diffusion_physics",
+      "clip_1247_reaction_physics",
+      "clip_1258_static_physics",
+      "clip_1268_static_physics",
+      "clip_1271_diffusion_experiment",
+      "clip_1283_static_physics",
+      "clip_1291_diffusion_physics",
+      "clip_1294_coalescence_physics",
+      "clip_1314_coalescence_physics",
+      "clip_1317_reaction_experiment",
+      "clip_1321_diffusion_experiment",
+      "clip_1326_diffusion_physics",
+      "clip_1333_static_physics",
+      "clip_1349_coalescence_physics",
+      "clip_1358_static_physics",
+      "clip_1359_coalescence_experiment",
+      "clip_1374_coalescence_physics",
+      "clip_1380_ripening_physics",
+      "clip_1382_reaction_physics",
+      "clip_1389_coalescence_physics",
+      "clip_1411_diffusion_physics",
+      "clip_1442_reaction_experiment",
+      "clip_1455_ripening_physics",
+      "clip_1464_coalescence_physics",
+      "clip_1467_reaction_experiment",
+      "clip_1486_diffusion_physics",
+      "clip_1490_ripening_physics",
+      "clip_1512_reaction_physics",
+      "clip_1516_diffusion_physics",
+      "clip_1521_diffusion_experiment",
+      "clip_1522_reaction_physics",
+      "clip_1535_ripening_physics",
+      "clip_1553_static_physics",
+      "clip_1569_coalescence_physics",
+      "clip_1570_ripening_physics",
+      "clip_1581_diffusion_physics",
+      "clip_1589_coalescence_physics",
+      "clip_1590_ripening_physics",
+      "clip_1593_static_physics",
+      "clip_1597_reaction_physics",
+      "clip_1601_diffusion_physics",
+      "clip_1612_reaction_physics",
+      "clip_1618_static_physics",
+      "clip_1623_static_physics",
+      "clip_1626_diffusion_physics",
+      "clip_1633_static_physics",
+      "clip_1649_coalescence_physics",
+      "clip_1658_static_physics",
+      "clip_1659_coalescence_experiment",
+      "clip_1660_ripening_physics",
+      "clip_1666_diffusion_physics",
+      "clip_1669_coalescence_physics",
+      "clip_1689_coalescence_physics",
+      "clip_1696_diffusion_experiment",
+      "clip_1722_reaction_physics",
+      "clip_1731_diffusion_physics",
+      "clip_1736_diffusion_physics",
+      "clip_1740_ripening_physics",
+      "clip_1765_ripening_physics",
+      "clip_1769_coalescence_physics",
+      "clip_1778_static_physics",
+      "clip_1793_static_physics",
+      "clip_1795_ripening_physics",
+      "clip_1797_reaction_physics",
+      "clip_1800_ripening_experiment",
+      "clip_1807_reaction_physics",
+      "clip_1812_reaction_physics",
+      "clip_1815_ripening_physics",
+      "clip_1819_coalescence_physics",
+      "clip_1826_diffusion_physics",
+      "clip_1837_reaction_physics",
+      "clip_1849_coalescence_physics",
+      "clip_1861_diffusion_physics",
+      "clip_1873_static_physics",
+      "clip_1875_ripening_experiment",
+      "clip_1882_reaction_physics",
+      "clip_1904_coalescence_physics",
+      "clip_1939_coalescence_physics",
+      "clip_1946_diffusion_experiment",
+      "clip_1949_coalescence_physics",
+      "clip_1957_reaction_physics",
+      "clip_1961_diffusion_physics",
+      "clip_1969_coalescence_physics",
+      "clip_1973_static_physics",
+      "clip_1978_static_physics"
+    ],
+    "test": [
+      "clip_0002_reaction_physics",
+      "clip_0028_static_physics",
+      "clip_0046_diffusion_experiment",
+      "clip_0053_static_physics",
+      "clip_0087_reaction_physics",
+      "clip_0090_ripening_physics",
+      "clip_0099_coalescence_physics",
+      "clip_0101_diffusion_physics",
+      "clip_0109_coalescence_experiment",
+      "clip_0118_static_physics",
+      "clip_0122_reaction_physics",
+      "clip_0147_reaction_physics",
+      "clip_0150_ripening_experiment",
+      "clip_0159_coalescence_experiment",
+      "clip_0182_reaction_physics",
+      "clip_0196_diffusion_experiment",
+      "clip_0198_static_physics",
+      "clip_0203_static_physics",
+      "clip_0206_diffusion_physics",
+      "clip_0212_reaction_physics",
+      "clip_0226_diffusion_physics",
+      "clip_0234_coalescence_experiment",
+      "clip_0236_diffusion_physics",
+      "clip_0245_ripening_physics",
+      "clip_0251_diffusion_physics",
+      "clip_0265_ripening_physics",
+      "clip_0283_static_physics",
+      "clip_0330_ripening_physics",
+      "clip_0346_diffusion_experiment",
+      "clip_0348_static_physics",
+      "clip_0353_static_physics",
+      "clip_0358_static_physics",
+      "clip_0381_diffusion_physics",
+      "clip_0397_reaction_physics",
+      "clip_0400_ripening_experiment",
+      "clip_0405_ripening_physics",
+      "clip_0409_coalescence_experiment",
+      "clip_0428_static_physics",
+      "clip_0429_coalescence_physics",
+      "clip_0433_static_physics",
+      "clip_0438_static_experiment",
+      "clip_0446_diffusion_experiment",
+      "clip_0452_reaction_physics",
+      "clip_0476_diffusion_physics",
+      "clip_0477_reaction_physics",
+      "clip_0486_diffusion_physics",
+      "clip_0493_static_physics",
+      "clip_0524_coalescence_physics",
+      "clip_0528_static_physics",
+      "clip_0548_static_physics",
+      "clip_0562_reaction_physics",
+      "clip_0570_ripening_physics",
+      "clip_0590_ripening_physics",
+      "clip_0634_coalescence_experiment",
+      "clip_0637_reaction_physics",
+      "clip_0638_static_experiment",
+      "clip_0640_ripening_physics",
+      "clip_0641_diffusion_physics",
+      "clip_0654_coalescence_physics",
+      "clip_0667_reaction_experiment",
+      "clip_0702_reaction_physics",
+      "clip_0708_static_physics",
+      "clip_0711_diffusion_physics",
+      "clip_0720_ripening_physics",
+      "clip_0724_coalescence_physics",
+      "clip_0763_static_experiment",
+      "clip_0769_coalescence_physics",
+      "clip_0782_reaction_physics",
+      "clip_0787_reaction_physics",
+      "clip_0792_reaction_experiment",
+      "clip_0804_coalescence_physics",
+      "clip_0816_diffusion_physics",
+      "clip_0841_diffusion_physics",
+      "clip_0847_reaction_physics",
+      "clip_0851_diffusion_physics",
+      "clip_0857_reaction_physics",
+      "clip_0858_static_physics",
+      "clip_0868_static_physics",
+      "clip_0883_static_physics",
+      "clip_0884_coalescence_experiment",
+      "clip_0898_static_physics",
+      "clip_0904_coalescence_physics",
+      "clip_0909_coalescence_experiment",
+      "clip_0914_coalescence_physics",
+      "clip_0929_coalescence_physics",
+      "clip_0937_reaction_physics",
+      "clip_0944_coalescence_physics",
+      "clip_0945_ripening_physics",
+      "clip_0957_reaction_physics",
+      "clip_0979_coalescence_physics",
+      "clip_0996_diffusion_experiment",
+      "clip_1003_static_physics",
+      "clip_1006_diffusion_physics",
+      "clip_1013_static_experiment",
+      "clip_1016_diffusion_physics",
+      "clip_1055_ripening_physics",
+      "clip_1060_ripening_physics",
+      "clip_1061_diffusion_physics",
+      "clip_1074_coalescence_physics",
+      "clip_1075_ripening_experiment",
+      "clip_1078_static_physics",
+      "clip_1085_ripening_physics",
+      "clip_1094_coalescence_physics",
+      "clip_1100_ripening_experiment",
+      "clip_1117_reaction_experiment",
+      "clip_1120_ripening_physics",
+      "clip_1131_diffusion_physics",
+      "clip_1136_diffusion_physics",
+      "clip_1137_reaction_physics",
+      "clip_1139_coalescence_physics",
+      "clip_1141_diffusion_physics",
+      "clip_1144_coalescence_physics",
+      "clip_1162_reaction_physics",
+      "clip_1168_static_physics",
+      "clip_1172_reaction_physics",
+      "clip_1194_coalescence_physics",
+      "clip_1219_coalescence_physics",
+      "clip_1228_static_physics",
+      "clip_1246_diffusion_experiment",
+      "clip_1267_reaction_experiment",
+      "clip_1270_ripening_physics",
+      "clip_1274_coalescence_physics",
+      "clip_1275_ripening_experiment",
+      "clip_1300_ripening_experiment",
+      "clip_1316_diffusion_physics",
+      "clip_1332_reaction_physics",
+      "clip_1336_diffusion_physics",
+      "clip_1342_reaction_experiment",
+      "clip_1350_ripening_experiment",
+      "clip_1354_coalescence_physics",
+      "clip_1368_static_physics",
+      "clip_1404_coalescence_physics",
+      "clip_1414_coalescence_physics",
+      "clip_1415_ripening_physics",
+      "clip_1419_coalescence_physics",
+      "clip_1423_static_physics",
+      "clip_1424_coalescence_physics",
+      "clip_1425_ripening_experiment",
+      "clip_1427_reaction_physics",
+      "clip_1428_static_physics",
+      "clip_1436_diffusion_physics",
+      "clip_1447_reaction_physics",
+      "clip_1474_coalescence_physics",
+      "clip_1477_reaction_physics",
+      "clip_1483_static_physics",
+      "clip_1498_static_physics",
+      "clip_1503_static_physics",
+      "clip_1506_diffusion_physics",
+      "clip_1515_ripening_physics",
+      "clip_1545_ripening_physics",
+      "clip_1548_static_physics",
+      "clip_1550_ripening_experiment",
+      "clip_1579_coalescence_physics",
+      "clip_1582_reaction_physics",
+      "clip_1584_coalescence_experiment",
+      "clip_1604_coalescence_physics",
+      "clip_1608_static_physics",
+      "clip_1611_diffusion_physics",
+      "clip_1624_coalescence_physics",
+      "clip_1625_ripening_experiment",
+      "clip_1634_coalescence_experiment",
+      "clip_1637_reaction_physics",
+      "clip_1647_reaction_physics",
+      "clip_1656_diffusion_physics",
+      "clip_1662_reaction_physics",
+      "clip_1674_coalescence_physics",
+      "clip_1686_diffusion_physics",
+      "clip_1714_coalescence_physics",
+      "clip_1719_coalescence_physics",
+      "clip_1721_diffusion_experiment",
+      "clip_1723_static_physics",
+      "clip_1738_static_experiment",
+      "clip_1744_coalescence_physics",
+      "clip_1757_reaction_physics",
+      "clip_1759_coalescence_experiment",
+      "clip_1762_reaction_physics",
+      "clip_1770_ripening_physics",
+      "clip_1783_static_physics",
+      "clip_1786_diffusion_physics",
+      "clip_1790_ripening_physics",
+      "clip_1791_diffusion_physics",
+      "clip_1809_coalescence_experiment",
+      "clip_1817_reaction_experiment",
+      "clip_1828_static_physics",
+      "clip_1848_static_physics",
+      "clip_1865_ripening_physics",
+      "clip_1867_reaction_experiment",
+      "clip_1876_diffusion_physics",
+      "clip_1893_static_physics",
+      "clip_1911_diffusion_physics",
+      "clip_1917_reaction_experiment",
+      "clip_1923_static_physics",
+      "clip_1925_ripening_experiment",
+      "clip_1926_diffusion_physics",
+      "clip_1929_coalescence_physics",
+      "clip_1944_coalescence_physics",
+      "clip_1953_static_physics",
+      "clip_1977_reaction_physics",
+      "clip_1993_static_physics",
+      "clip_1999_coalescence_physics"
+    ]
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.1726144326925279,
+      "val_loss": 0.7653535946299093
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.5877053797245025,
+      "val_loss": 0.6835613665394128
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.4910571777820587,
+      "val_loss": 0.6453473037614609
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.4246184709072113,
+      "val_loss": 0.7274013348042775
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.3842025814652443,
+      "val_loss": 0.7217852035031532
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.3393142124414444,
+      "val_loss": 0.6704700258545602
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.30519886839389804,
+      "val_loss": 0.6913129253128466
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.26319437777996063,
+      "val_loss": 0.7448854925581061
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.2177331392467022,
+      "val_loss": 1.0232725975612482
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.19990851905941964,
+      "val_loss": 0.9023088145846376
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.1778574653863907,
+      "val_loss": 0.9644235146050446
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.15294075721502304,
+      "val_loss": 1.0876130967046886
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.14831436523795127,
+      "val_loss": 1.1580593774017816
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.1416634938120842,
+      "val_loss": 1.1355543622312645
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.12726478067040442,
+      "val_loss": 1.2489781016811206
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.11714092928171158,
+      "val_loss": 1.223495651869633
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.11884963446855545,
+      "val_loss": 1.1434295246252617
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.11199277135729789,
+      "val_loss": 1.4621281995060154
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.10078938820958137,
+      "val_loss": 1.3349816477931917
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.09912163043022156,
+      "val_loss": 1.5293336119681311
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.09829104612767696,
+      "val_loss": 1.603889112238781
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.09906164753437043,
+      "val_loss": 1.3329034594182199
+    },
+    {
+      "epoch": 23,
+      "train_loss": 0.09565452601015567,
+      "val_loss": 1.4551426707603299
+    },
+    {
+      "epoch": 24,
+      "train_loss": 0.08451837156713009,
+      "val_loss": 1.544665670081878
+    },
+    {
+      "epoch": 25,
+      "train_loss": 0.08012096366286278,
+      "val_loss": 1.6661635908705834
+    },
+    {
+      "epoch": 26,
+      "train_loss": 0.07731089599430561,
+      "val_loss": 1.608168590504426
+    },
+    {
+      "epoch": 27,
+      "train_loss": 0.09493770863115787,
+      "val_loss": 1.2862304157723252
+    },
+    {
+      "epoch": 28,
+      "train_loss": 0.08219530163705349,
+      "val_loss": 1.5837316484973072
+    },
+    {
+      "epoch": 29,
+      "train_loss": 0.06682611989974975,
+      "val_loss": 1.7915168081680997
+    },
+    {
+      "epoch": 30,
+      "train_loss": 0.05155378720164299,
+      "val_loss": 1.8825030303813113
+    },
+    {
+      "epoch": 31,
+      "train_loss": 0.04887160987406969,
+      "val_loss": 1.7513843373820994
+    },
+    {
+      "epoch": 32,
+      "train_loss": 0.0740740157365799,
+      "val_loss": 1.4243056759857142
+    },
+    {
+      "epoch": 33,
+      "train_loss": 0.10345455613732338,
+      "val_loss": 1.493415817213706
+    },
+    {
+      "epoch": 34,
+      "train_loss": 0.06606092782318593,
+      "val_loss": 1.710602709011862
+    },
+    {
+      "epoch": 35,
+      "train_loss": 0.045979850560426715,
+      "val_loss": 2.020551170201633
+    },
+    {
+      "epoch": 36,
+      "train_loss": 0.040834442980587485,
+      "val_loss": 2.2071286847535223
+    },
+    {
+      "epoch": 37,
+      "train_loss": 0.03808480170369148,
+      "val_loss": 2.3325024080245544
+    },
+    {
+      "epoch": 38,
+      "train_loss": 0.059704209975898266,
+      "val_loss": 1.9701849495093473
+    },
+    {
+      "epoch": 39,
+      "train_loss": 0.0973013111203909,
+      "val_loss": 1.7158963805772722
+    },
+    {
+      "epoch": 40,
+      "train_loss": 0.053389035731554034,
+      "val_loss": 2.0605733567557207
+    },
+    {
+      "epoch": 41,
+      "train_loss": 0.03952968419343233,
+      "val_loss": 2.4034704606527812
+    },
+    {
+      "epoch": 42,
+      "train_loss": 0.041710475653409955,
+      "val_loss": 2.2030259232622935
+    },
+    {
+      "epoch": 43,
+      "train_loss": 0.04122931019961834,
+      "val_loss": 2.139936689210062
+    },
+    {
+      "epoch": 44,
+      "train_loss": 0.057822839200496676,
+      "val_loss": 2.027809974198905
+    },
+    {
+      "epoch": 45,
+      "train_loss": 0.05743047904968262,
+      "val_loss": 2.00582025638118
+    },
+    {
+      "epoch": 46,
+      "train_loss": 0.049053323581814766,
+      "val_loss": 2.064077135931236
+    },
+    {
+      "epoch": 47,
+      "train_loss": 0.03922926677763462,
+      "val_loss": 2.3837710490789465
+    },
+    {
+      "epoch": 48,
+      "train_loss": 0.0336199004650116,
+      "val_loss": 2.304374421223665
+    },
+    {
+      "epoch": 49,
+      "train_loss": 0.034625084534287455,
+      "val_loss": 2.5074765582363634
+    },
+    {
+      "epoch": 50,
+      "train_loss": 0.06741872613132,
+      "val_loss": 2.2708324880931325
+    },
+    {
+      "epoch": 51,
+      "train_loss": 0.05378262521326542,
+      "val_loss": 1.8937271709521166
+    },
+    {
+      "epoch": 52,
+      "train_loss": 0.035180133491754535,
+      "val_loss": 2.379984708330311
+    },
+    {
+      "epoch": 53,
+      "train_loss": 0.024583427146077155,
+      "val_loss": 2.391775437687247
+    },
+    {
+      "epoch": 54,
+      "train_loss": 0.019826619271188974,
+      "val_loss": 2.833341145465454
+    },
+    {
+      "epoch": 55,
+      "train_loss": 0.022200290653854607,
+      "val_loss": 2.7909374663029043
+    },
+    {
+      "epoch": 56,
+      "train_loss": 0.03857169523462653,
+      "val_loss": 2.1103463380719525
+    },
+    {
+      "epoch": 57,
+      "train_loss": 0.09361226318776608,
+      "val_loss": 1.6023853224116011
+    },
+    {
+      "epoch": 58,
+      "train_loss": 0.04196465637534857,
+      "val_loss": 2.0003817505039536
+    },
+    {
+      "epoch": 59,
+      "train_loss": 0.026279944643378256,
+      "val_loss": 2.397336196963684
+    },
+    {
+      "epoch": 60,
+      "train_loss": 0.018552293438464405,
+      "val_loss": 2.6546695453052322
+    },
+    {
+      "epoch": 61,
+      "train_loss": 0.015144929159432649,
+      "val_loss": 2.8351478005726687
+    },
+    {
+      "epoch": 62,
+      "train_loss": 0.017154404785484075,
+      "val_loss": 2.8047373290069566
+    },
+    {
+      "epoch": 63,
+      "train_loss": 0.03128666752576828,
+      "val_loss": 2.465991757476863
+    },
+    {
+      "epoch": 64,
+      "train_loss": 0.07620025034248828,
+      "val_loss": 1.8583693183934726
+    },
+    {
+      "epoch": 65,
+      "train_loss": 0.04178721179068089,
+      "val_loss": 2.1354539391284173
+    },
+    {
+      "epoch": 66,
+      "train_loss": 0.02389073920994997,
+      "val_loss": 2.3943700715363883
+    },
+    {
+      "epoch": 67,
+      "train_loss": 0.018279572889208794,
+      "val_loss": 2.7080704587014814
+    },
+    {
+      "epoch": 68,
+      "train_loss": 0.014164476666599512,
+      "val_loss": 3.0559354253267994
+    },
+    {
+      "epoch": 69,
+      "train_loss": 0.01660051369667053,
+      "val_loss": 2.772109546136266
+    },
+    {
+      "epoch": 70,
+      "train_loss": 0.05856782665103674,
+      "val_loss": 1.7784608589669766
+    },
+    {
+      "epoch": 71,
+      "train_loss": 0.05667816624045372,
+      "val_loss": 1.8931711847051835
+    },
+    {
+      "epoch": 72,
+      "train_loss": 0.02918982108682394,
+      "val_loss": 2.2984719581652087
+    },
+    {
+      "epoch": 73,
+      "train_loss": 0.019004127092659473,
+      "val_loss": 2.6483789884184783
+    },
+    {
+      "epoch": 74,
+      "train_loss": 0.01348878713324666,
+      "val_loss": 2.815189694396604
+    },
+    {
+      "epoch": 75,
+      "train_loss": 0.010088634818792344,
+      "val_loss": 3.065438857391334
+    },
+    {
+      "epoch": 76,
+      "train_loss": 0.008851296020671725,
+      "val_loss": 3.1108049204626593
+    },
+    {
+      "epoch": 77,
+      "train_loss": 0.007784322317689657,
+      "val_loss": 3.3042486433546765
+    },
+    {
+      "epoch": 78,
+      "train_loss": 0.007870206173509359,
+      "val_loss": 3.3618134405023565
+    },
+    {
+      "epoch": 79,
+      "train_loss": 0.05039913543872535,
+      "val_loss": 1.59719305649733
+    },
+    {
+      "epoch": 80,
+      "train_loss": 0.08475122042000294,
+      "val_loss": 1.6452710278713094
+    },
+    {
+      "epoch": 81,
+      "train_loss": 0.03297257610410452,
+      "val_loss": 2.097165567365984
+    },
+    {
+      "epoch": 82,
+      "train_loss": 0.020823754206299783,
+      "val_loss": 2.5175058357060527
+    },
+    {
+      "epoch": 83,
+      "train_loss": 0.014030979499220848,
+      "val_loss": 2.557558661344619
+    },
+    {
+      "epoch": 84,
+      "train_loss": 0.010714274594560265,
+      "val_loss": 2.821137264739877
+    },
+    {
+      "epoch": 85,
+      "train_loss": 0.009166735595092177,
+      "val_loss": 3.0991929754519614
+    },
+    {
+      "epoch": 86,
+      "train_loss": 0.008313362987712026,
+      "val_loss": 3.1104303048774837
+    },
+    {
+      "epoch": 87,
+      "train_loss": 0.051276816820725796,
+      "val_loss": 1.702211597035773
+    },
+    {
+      "epoch": 88,
+      "train_loss": 0.05869120909273624,
+      "val_loss": 1.830327441041081
+    },
+    {
+      "epoch": 89,
+      "train_loss": 0.024894155487418176,
+      "val_loss": 2.3737879772120105
+    },
+    {
+      "epoch": 90,
+      "train_loss": 0.014284182049334048,
+      "val_loss": 2.620014783375846
+    },
+    {
+      "epoch": 91,
+      "train_loss": 0.00977749135904014,
+      "val_loss": 2.9096901334060457
+    },
+    {
+      "epoch": 92,
+      "train_loss": 0.007669133566319942,
+      "val_loss": 3.030034802556514
+    },
+    {
+      "epoch": 93,
+      "train_loss": 0.006811210492625832,
+      "val_loss": 3.24809718258179
+    },
+    {
+      "epoch": 94,
+      "train_loss": 0.017698842035606503,
+      "val_loss": 2.918119209952438
+    },
+    {
+      "epoch": 95,
+      "train_loss": 0.054696944318711756,
+      "val_loss": 2.089075396801479
+    },
+    {
+      "epoch": 96,
+      "train_loss": 0.038034525766968724,
+      "val_loss": 2.2011388529675266
+    },
+    {
+      "epoch": 97,
+      "train_loss": 0.020226942215114833,
+      "val_loss": 2.374379652971848
+    },
+    {
+      "epoch": 98,
+      "train_loss": 0.012900296453386546,
+      "val_loss": 2.7617191182919583
+    },
+    {
+      "epoch": 99,
+      "train_loss": 0.008898442965000869,
+      "val_loss": 2.99555254828768
+    },
+    {
+      "epoch": 100,
+      "train_loss": 0.0077469963300973175,
+      "val_loss": 3.1274538952083635
+    },
+    {
+      "epoch": 101,
+      "train_loss": 0.006470166279003024,
+      "val_loss": 3.132255144798146
+    },
+    {
+      "epoch": 102,
+      "train_loss": 0.00598298268020153,
+      "val_loss": 3.3316143828090103
+    },
+    {
+      "epoch": 103,
+      "train_loss": 0.005855131115764379,
+      "val_loss": 3.375186243067725
+    },
+    {
+      "epoch": 104,
+      "train_loss": 0.005584483939222991,
+      "val_loss": 3.5098783086402157
+    },
+    {
+      "epoch": 105,
+      "train_loss": 0.005625452250242234,
+      "val_loss": 3.5492434081035302
+    },
+    {
+      "epoch": 106,
+      "train_loss": 0.006554899255745113,
+      "val_loss": 3.505153505089946
+    },
+    {
+      "epoch": 107,
+      "train_loss": 0.10530587234720588,
+      "val_loss": 1.4528927328213812
+    },
+    {
+      "epoch": 108,
+      "train_loss": 0.04732064993679524,
+      "val_loss": 1.8529261740775536
+    },
+    {
+      "epoch": 109,
+      "train_loss": 0.02179187884926796,
+      "val_loss": 2.240918955447289
+    },
+    {
+      "epoch": 110,
+      "train_loss": 0.01367467375099659,
+      "val_loss": 2.5326230146419317
+    },
+    {
+      "epoch": 111,
+      "train_loss": 0.008914464633911849,
+      "val_loss": 2.7724810035798115
+    },
+    {
+      "epoch": 112,
+      "train_loss": 0.006973959902301431,
+      "val_loss": 2.8913516610170515
+    },
+    {
+      "epoch": 113,
+      "train_loss": 0.006062459474429488,
+      "val_loss": 3.011343618920341
+    },
+    {
+      "epoch": 114,
+      "train_loss": 0.005644512312486768,
+      "val_loss": 3.1378241246536422
+    },
+    {
+      "epoch": 115,
+      "train_loss": 0.005378162384033203,
+      "val_loss": 3.160141363787575
+    },
+    {
+      "epoch": 116,
+      "train_loss": 0.005106299767270684,
+      "val_loss": 3.2899898070449267
+    },
+    {
+      "epoch": 117,
+      "train_loss": 0.005701342505402863,
+      "val_loss": 3.3284766202489027
+    },
+    {
+      "epoch": 118,
+      "train_loss": 0.005574445792473853,
+      "val_loss": 3.3420826844014107
+    },
+    {
+      "epoch": 119,
+      "train_loss": 0.005788916746154427,
+      "val_loss": 3.5266784939545985
+    },
+    {
+      "epoch": 120,
+      "train_loss": 0.06892458319384605,
+      "val_loss": 1.414030530570319
+    },
+    {
+      "epoch": 121,
+      "train_loss": 0.06414083279669285,
+      "val_loss": 2.0815343017907093
+    },
+    {
+      "epoch": 122,
+      "train_loss": 0.025633248932659627,
+      "val_loss": 2.180647109679806
+    },
+    {
+      "epoch": 123,
+      "train_loss": 0.013722045946866273,
+      "val_loss": 2.5203561931908034
+    },
+    {
+      "epoch": 124,
+      "train_loss": 0.009662790039554238,
+      "val_loss": 2.7276155101343655
+    },
+    {
+      "epoch": 125,
+      "train_loss": 0.007263480611145496,
+      "val_loss": 2.9798021179656633
+    },
+    {
+      "epoch": 126,
+      "train_loss": 0.009395264066755771,
+      "val_loss": 2.8247125453342457
+    },
+    {
+      "epoch": 127,
+      "train_loss": 0.009469914076849818,
+      "val_loss": 2.669734936326552
+    },
+    {
+      "epoch": 128,
+      "train_loss": 0.02984180737659335,
+      "val_loss": 2.136051279477799
+    },
+    {
+      "epoch": 129,
+      "train_loss": 0.037415171019732955,
+      "val_loss": 2.4697040697684685
+    },
+    {
+      "epoch": 130,
+      "train_loss": 0.023514275945723057,
+      "val_loss": 2.3388987829248173
+    },
+    {
+      "epoch": 131,
+      "train_loss": 0.01432784602791071,
+      "val_loss": 2.6375440386132882
+    },
+    {
+      "epoch": 132,
+      "train_loss": 0.008499882530421018,
+      "val_loss": 2.9511629545483915
+    },
+    {
+      "epoch": 133,
+      "train_loss": 0.006845103217288852,
+      "val_loss": 3.139477127740463
+    },
+    {
+      "epoch": 134,
+      "train_loss": 0.005580401471816003,
+      "val_loss": 3.2021356462694395
+    },
+    {
+      "epoch": 135,
+      "train_loss": 0.00499971838016063,
+      "val_loss": 3.254168665363861
+    },
+    {
+      "epoch": 136,
+      "train_loss": 0.0045333950771018865,
+      "val_loss": 3.2847754985165483
+    },
+    {
+      "epoch": 137,
+      "train_loss": 0.005275525954551994,
+      "val_loss": 3.4195780964157643
+    },
+    {
+      "epoch": 138,
+      "train_loss": 0.004745831288397312,
+      "val_loss": 3.4834334208680606
+    },
+    {
+      "epoch": 139,
+      "train_loss": 0.004784306931309402,
+      "val_loss": 3.4853682198915807
+    },
+    {
+      "epoch": 140,
+      "train_loss": 0.004884050923399628,
+      "val_loss": 3.581090640925323
+    },
+    {
+      "epoch": 141,
+      "train_loss": 0.0052462504282593725,
+      "val_loss": 3.613471295351323
+    },
+    {
+      "epoch": 142,
+      "train_loss": 0.005251466138288379,
+      "val_loss": 3.7741656724494486
+    },
+    {
+      "epoch": 143,
+      "train_loss": 0.005377426403574645,
+      "val_loss": 3.701686556049334
+    },
+    {
+      "epoch": 144,
+      "train_loss": 0.10025067118182779,
+      "val_loss": 1.2910267987642616
+    },
+    {
+      "epoch": 145,
+      "train_loss": 0.04471895868331194,
+      "val_loss": 1.817109665425774
+    },
+    {
+      "epoch": 146,
+      "train_loss": 0.018673946138471367,
+      "val_loss": 2.230882794016038
+    },
+    {
+      "epoch": 147,
+      "train_loss": 0.010951868819072843,
+      "val_loss": 2.4223209515321082
+    },
+    {
+      "epoch": 148,
+      "train_loss": 0.00782097410224378,
+      "val_loss": 2.6573252544140282
+    },
+    {
+      "epoch": 149,
+      "train_loss": 0.005663807524368167,
+      "val_loss": 2.7668468753298443
+    },
+    {
+      "epoch": 150,
+      "train_loss": 0.004917155940085649,
+      "val_loss": 2.909664694624492
+    },
+    {
+      "epoch": 151,
+      "train_loss": 0.004821843824349344,
+      "val_loss": 3.01187831161026
+    },
+    {
+      "epoch": 152,
+      "train_loss": 0.004113732122816145,
+      "val_loss": 3.09976411940524
+    },
+    {
+      "epoch": 153,
+      "train_loss": 0.004062170936726034,
+      "val_loss": 3.2003036064628403
+    },
+    {
+      "epoch": 154,
+      "train_loss": 0.0039624412702396515,
+      "val_loss": 3.1873403651098284
+    },
+    {
+      "epoch": 155,
+      "train_loss": 0.003914791845716536,
+      "val_loss": 3.175705815870731
+    },
+    {
+      "epoch": 156,
+      "train_loss": 0.004043154028244317,
+      "val_loss": 3.271975991027519
+    },
+    {
+      "epoch": 157,
+      "train_loss": 0.004240047723054886,
+      "val_loss": 3.2695449634958
+    },
+    {
+      "epoch": 158,
+      "train_loss": 0.004770428069867194,
+      "val_loss": 3.428174570250435
+    },
+    {
+      "epoch": 159,
+      "train_loss": 0.0064902280243113635,
+      "val_loss": 3.5744993139903385
+    },
+    {
+      "epoch": 160,
+      "train_loss": 0.10375110051035881,
+      "val_loss": 1.4032596882206563
+    },
+    {
+      "epoch": 161,
+      "train_loss": 0.03112018623948097,
+      "val_loss": 1.9264189270012582
+    },
+    {
+      "epoch": 162,
+      "train_loss": 0.014975168537348508,
+      "val_loss": 2.2285201266503183
+    },
+    {
+      "epoch": 163,
+      "train_loss": 0.009629189506173134,
+      "val_loss": 2.5215689483494423
+    },
+    {
+      "epoch": 164,
+      "train_loss": 0.006405405111610889,
+      "val_loss": 2.737836933209778
+    },
+    {
+      "epoch": 165,
+      "train_loss": 0.005057068394497037,
+      "val_loss": 2.891461482694069
+    },
+    {
+      "epoch": 166,
+      "train_loss": 0.004420136590488255,
+      "val_loss": 2.956766637857444
+    },
+    {
+      "epoch": 167,
+      "train_loss": 0.004075643276795745,
+      "val_loss": 3.025775304361702
+    },
+    {
+      "epoch": 168,
+      "train_loss": 0.0038021260453388094,
+      "val_loss": 3.082374486358116
+    },
+    {
+      "epoch": 169,
+      "train_loss": 0.003798403188586235,
+      "val_loss": 3.2563998763577438
+    },
+    {
+      "epoch": 170,
+      "train_loss": 0.0037362953135743737,
+      "val_loss": 3.267526776330492
+    },
+    {
+      "epoch": 171,
+      "train_loss": 0.004493557752110064,
+      "val_loss": 3.2591276119430415
+    },
+    {
+      "epoch": 172,
+      "train_loss": 0.004399862012825906,
+      "val_loss": 3.196270695735757
+    },
+    {
+      "epoch": 173,
+      "train_loss": 0.02937455948535353,
+      "val_loss": 2.070289004558382
+    },
+    {
+      "epoch": 174,
+      "train_loss": 0.06779665172845126,
+      "val_loss": 1.7737837971780246
+    },
+    {
+      "epoch": 175,
+      "train_loss": 0.022805209401994944,
+      "val_loss": 2.1214217742363486
+    },
+    {
+      "epoch": 176,
+      "train_loss": 0.011592899009585381,
+      "val_loss": 2.399579753057835
+    },
+    {
+      "epoch": 177,
+      "train_loss": 0.007208558486774564,
+      "val_loss": 2.7084579827210393
+    },
+    {
+      "epoch": 178,
+      "train_loss": 0.005166407916694879,
+      "val_loss": 2.845694789478478
+    },
+    {
+      "epoch": 179,
+      "train_loss": 0.0044333229269832375,
+      "val_loss": 2.9526496434007017
+    },
+    {
+      "epoch": 180,
+      "train_loss": 0.004020268567837775,
+      "val_loss": 3.0517519769220116
+    },
+    {
+      "epoch": 181,
+      "train_loss": 0.0038203911148011684,
+      "val_loss": 3.1297874482818684
+    },
+    {
+      "epoch": 182,
+      "train_loss": 0.003628341252915561,
+      "val_loss": 3.0818553292951263
+    },
+    {
+      "epoch": 183,
+      "train_loss": 0.0034365876745432616,
+      "val_loss": 3.2070876229732943
+    },
+    {
+      "epoch": 184,
+      "train_loss": 0.0037384779336862265,
+      "val_loss": 3.16576371791835
+    },
+    {
+      "epoch": 185,
+      "train_loss": 0.0038814222291111947,
+      "val_loss": 3.299943839173062
+    },
+    {
+      "epoch": 186,
+      "train_loss": 0.0043117881510406735,
+      "val_loss": 3.4139320458086155
+    },
+    {
+      "epoch": 187,
+      "train_loss": 0.004266943144612015,
+      "val_loss": 3.4215335946280163
+    },
+    {
+      "epoch": 188,
+      "train_loss": 0.004732572990469634,
+      "val_loss": 3.472976029038239
+    },
+    {
+      "epoch": 189,
+      "train_loss": 0.08089466648455709,
+      "val_loss": 1.3798506955464427
+    },
+    {
+      "epoch": 190,
+      "train_loss": 0.03901991089433431,
+      "val_loss": 1.9424543132463965
+    },
+    {
+      "epoch": 191,
+      "train_loss": 0.016214219830930233,
+      "val_loss": 2.2095096863139743
+    },
+    {
+      "epoch": 192,
+      "train_loss": 0.00891386958770454,
+      "val_loss": 2.577442692812925
+    },
+    {
+      "epoch": 193,
+      "train_loss": 0.005698604785837233,
+      "val_loss": 2.7385896663731946
+    },
+    {
+      "epoch": 194,
+      "train_loss": 0.004389634144492447,
+      "val_loss": 2.778985770175251
+    },
+    {
+      "epoch": 195,
+      "train_loss": 0.0038406175076961518,
+      "val_loss": 2.931197484366048
+    },
+    {
+      "epoch": 196,
+      "train_loss": 0.003661965357139707,
+      "val_loss": 2.9982845577747583
+    },
+    {
+      "epoch": 197,
+      "train_loss": 0.003577184369787574,
+      "val_loss": 2.999549772126225
+    },
+    {
+      "epoch": 198,
+      "train_loss": 0.0032526150476187466,
+      "val_loss": 3.120645421572006
+    },
+    {
+      "epoch": 199,
+      "train_loss": 0.0031793487425893544,
+      "val_loss": 3.164772423680503
+    },
+    {
+      "epoch": 200,
+      "train_loss": 0.0032656615870073438,
+      "val_loss": 3.2320243477547606
+    }
+  ]
+}
