@@ -250,12 +250,9 @@ thesis are therefore scoped to simulation.
 \label{sec:res-encoder}
 
 Section~\ref{sec:res-gate1} used the encoder frozen. To see what that choice costs, we
-hold the input, the probes, the loss, the split and the sample budget fixed and change
-only the encoder: \textsf{F}, frozen V-JEPA~2 (probes only); \textsf{L}, the same encoder
-with LoRA adapters of rank 16 on the attention projections (7.62\,M trainable
-parameters); and \textsf{C}, a four-block CNN with stride 16 trained from scratch
-(1.51\,M parameters). Each is trained on 100, 30 and 10\,\% of the training clips
-(nested subsets). Table~\ref{tab:encoders} gives the result.
+compare it with the same encoder adapted by LoRA (\textsf{L}, 7.62\,M trainable
+parameters) and with a small CNN trained from scratch (\textsf{C}, 1.51\,M parameters),
+with everything but the encoder held fixed (Section~\ref{sec:method-encoder}). Table~\ref{tab:encoders} gives the result.
 
 \begin{table}[h]
   \centering

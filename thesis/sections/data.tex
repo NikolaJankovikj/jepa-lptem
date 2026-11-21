@@ -1,10 +1,94 @@
 \section{Simulator and Data}
+\label{sec:data}
+
+Testing whether a model has learned physics needs the physics to be known exactly, frame
+by frame. Real LPTEM video does not come with that: particle sizes and positions in real
+movies are themselves estimates, and no real movie states which growth law it follows.
+We therefore train and evaluate on simulated video with an exact answer key, and use real
+published movies only to test transfer (Section~\ref{sec:res-real}).
+
 \subsection{The LPTEM Simulator}
-TODO
-% sim/, PLAN.md Step 4, calibration to real video.
-\subsection{The Synthetic Dataset}\label{sec:dataset}
-TODO
-% experiments/dataset-v1/: 2000 clips, strata, audit.
-\subsection{Real Published Movies}\label{sec:real-data}
-TODO
-% experiments/real/, data/real-figshare/SOURCES.txt, SAM-EM nanorods.
+\label{sec:simulator}
+
+The simulator has two separate parts: a physics engine that produces the ground truth,
+and an image-formation model that turns it into pixels. The model only ever sees the
+pixels; the evaluation only ever uses the ground truth.
+
+\paragraph{Physics.} Particles diffuse as Brownian walkers with a shared diffusion
+coefficient $D$ inside reflecting walls, with an optional stage drift common to all
+particles. Five processes set how their radii evolve:
+\begin{itemize}
+  \item \emph{diffusion-limited growth}, $r \propto t^{1/3}$;
+  \item \emph{reaction-limited growth}, $r \propto t^{1/2}$;
+  \item \emph{static}, constant radii;
+  \item \emph{Ostwald ripening}, a coupled, mass-conserving Lifshitz--Slyozov--Wagner
+    population in which small particles feed large ones;
+  \item \emph{coalescence}, volume-conserving merging on contact, the only process in
+    which particles interact and the only source of discrete, exactly timed events.
+\end{itemize}
+In the two growth processes every particle has its own rate constant, pinned to its
+initial radius so that all particles follow the same power law from a common nucleation
+time. Without this the growth equations contract the size distribution to a single
+radius within one clip, and comparing size distributions would degenerate to comparing
+means. Particle size is set by a target area fraction rather than by the growth law, so
+that particles stay separable and every probe failure can be attributed to the model,
+not to an answer that is not visible.
+
+\paragraph{Image formation.} Frames are rendered with a re-implementation of the image
+formation of the LPTEMsimulator~\cite{lptemsim}: Beer--Lambert attenuation through a
+stack of gold, water and silicon nitride with their inelastic mean free paths, a bulging
+liquid-thickness field, Poisson shot noise at the given electron dose, Gaussian read
+noise, and a detector transfer function calibrated to real video. The particle geometry
+is ours: spheres with a correct chord thickness, where the upstream code draws nanorods.
+Imaging conditions are randomised over ranges, not fitted to one experiment: the
+criterion was that real experimental video lies inside the generated range on every
+image statistic that survives the unknown contrast stretch of published frames
+(apparent radius, relative temporal change, and the ratio of temporal to spatial noise).
+
+\paragraph{Validation of the answer key.} A regression suite grades the ground truth
+itself on freshly generated clips: growth exponents to $\pm 0.001$, the pooled MSD
+against $4Dt$ over the lag range where it is valid, coverage caps, no particle labelled
+below the visibility floor, no leak from brightness to size, larger particles diffusing
+more slowly, ripening that coarsens, and timed, volume-conserving merges. Three of the
+simulator's statistics were initially tuned to artefacts of their own estimators; each
+was caught by pointing the estimator at clips whose answer was known.
+
+\subsection{The Synthetic Dataset}
+\label{sec:dataset}
+
+The dataset contains 2000 clips of 100 frames at $512 \times 512$\,px, 400 per process,
+in two strata:
+\begin{itemize}
+  \item the \emph{physics} stratum (320 clips per process): 6--16 particles of
+    8--22\,px radius per clip, at doses of 6--75\,e/px. All pass/fail criteria are
+    decided on this stratum;
+  \item the \emph{experiment} stratum (80 clips per process): the imaging conditions of
+    real video, at most 2\,\% coverage and doses of 8--12\,e/px, so that real data falls
+    inside the training distribution.
+\end{itemize}
+Each clip stores its frames, every particle's position and radius at every frame, the
+merge events (1035 in total, about 2.6 per coalescence clip) and every simulation
+parameter. The mean liquid thickness is fixed at 150\,nm. An audit of the full run found
+no unreadable or empty clip; on average 0.27\,\% of pixels are black (worst clip
+2.89\,\%), which is physical: at the lowest dose behind the thickest liquid a pixel
+receives about four electrons, so a few percent receive none.
+
+For the model, each clip is centre-cropped to $256 \times 256$\,px (cropped, never
+resized, so that one pixel stays one detector pixel) and cut into two 64-frame windows
+(frames 0--63 and 36--99). The clips are split 1600 / 200 / 200 into training,
+validation and test sets, by clip, with one fixed seed for every experiment in this
+thesis.
+
+\subsection{Real Published Movies}
+\label{sec:real-data}
+
+Raw LPTEM recordings are rarely published. We therefore collected the supplementary
+movies of published LPTEM papers on particle growth, diffusion, assembly and
+coalescence: 132 movies from 34 papers, under their open licences. A movie made for
+display often breaks two premises of the pipeline, that one pixel is one detector pixel
+and one frame is one time step, so each movie was screened before use. A movie passes if
+it shows white shot noise on its own pixel grid, has grey levels, at least 16 clean
+frames and at least 256\,px, and contains a $256 \times 256$ region free of overlays.
+Ten of the 132 pass; most were rescaled for display. We use 8 movies from 7 papers,
+together with the Au nanorod video released with SAM-EM~\cite{samem}, which is also the
+video the simulator's imaging conditions were checked against.

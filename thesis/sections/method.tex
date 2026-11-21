@@ -1,16 +1,155 @@
 \section{Methodology}
+\label{sec:method}
+
+The pipeline has three stages: a frozen video encoder turns frames into latent tokens,
+a forecaster rolls the latents forward in time, and readout probes turn latents, present
+or forecast, into physical numbers that are compared with the simulator's ground truth.
+Only the forecaster and the probes are trained; the encoder never sees a label.
+
 \subsection{Frozen Encoder and Feature Extraction}
-TODO
-% Per-frame tubelets; the look-ahead leak (experiments/leak-check/).
-\subsection{Reading Physics off Latents (Gate 1)}\label{sec:gate1}
-TODO
-% Attentive + centroid probes; experiments/gate1-perframe/.
-\subsection{Token-Level Forecasting}\label{sec:token-forecast}
-TODO
-% experiments/predictor-perframe/.
-\subsection{Position-Free Forecasting}\label{sec:pooled}
-TODO
-% experiments/pooled-gate1/, pooled-forecast/.
-\subsection{Evaluation Protocol}\label{sec:protocol}
-TODO
-% Pre-registration, persistence and trend baselines, ceilings, clip bootstrap CIs.
+\label{sec:encoder}
+
+The encoder is V-JEPA~2 ViT-L~\cite{assran2025vjepa2} (300\,M parameters), pretrained
+by masked latent prediction on natural video and used without any adaptation. It splits
+its input into tubelets of 2 frames $\times$ $16 \times 16$\,px, so a $256 \times 256$
+crop gives one latent frame of $16 \times 16 = 256$ tokens of dimension 1024 per two
+video frames. The image processor's default resize (256 to 292\,px and back) is
+switched off: it zooms the frame by 1.14 and shifts the ground truth by up to 18\,px,
+more than one token.
+
+\paragraph{Per-frame encoding.} Each two-frame tubelet is encoded on its own, and a
+64-frame window becomes a sequence of 32 latent frames. This choice is forced by a
+pitfall we found on the way. Our first feature cache encoded each 64-frame window in one
+pass, as is usual for video encoders, so the encoder's attention let every latent frame
+see the whole window, including its future. A forecaster given eight such context
+frames is partly given the answer. Re-encoding the context alone agreed with the cached
+latents at a token cosine of only 0.74--0.84, worst next to the forecast, and the one
+clear win of the first forecaster (detection F1 0.80 against 0.56 for persistence at
+$+1$) fell to 0.54 with honest contexts. With per-frame encoding, frames shared between
+windows agree at cosine 1.000. Every result in this thesis uses per-frame features; the
+earlier results were discarded. The warning applies to any latent world model built on
+a video encoder with temporal attention.
+
+\subsection{Reading Physics off Latents}
+\label{sec:gate1}
+
+Two probes read a latent frame, following the attentive-probe protocol of V-JEPA:
+\begin{itemize}
+  \item an \emph{attentive probe}, in which a single learned query cross-attends over the
+    256 tokens and a linear head outputs the particle count, the mean radius and the
+    total particle area (z-scored with training statistics);
+  \item a \emph{centroid probe}, a per-token linear head with a learned positional
+    embedding that outputs, for each $16 \times 16$\,px cell, an occupancy logit and a
+    sub-cell offset. Centroids are decoded at the local maxima of occupancy above a
+    threshold chosen on validation data. The sub-cell offsets keep displacements
+    smaller than one token, without which Brownian steps would be quantised to noise.
+\end{itemize}
+Both are trained jointly (mean-squared error on the observables, positively weighted
+binary cross-entropy on occupancy, L2 on offsets; AdamW, learning rate $10^{-3}$, 50
+epochs). Decoded centroids are linked into tracks with trackpy~\cite{trackpy}, and the
+MSD over tracks, with drift removed, gives an estimate of $4Dt$.
+
+\paragraph{Gate 1.} The encoder is taken to carry the present physics if, on the test
+clips of the physics stratum, the $R^2$ of mean radius and of count are at least 0.8 and
+the MSD-based estimate of $4Dt$ is within 20\,\% of the truth, read against the
+ceiling of a perfect detector at the same frame rate and track lengths.
+
+\subsection{Token-Level Forecasting}
+\label{sec:token-forecast}
+
+The token-level forecaster follows the recipe of V-JEPA~2-AC without actions. It is a
+block-causal transformer over the $T \times 256$ tokens of $T$ latent frames: a token
+attends to tokens in its own frame and in earlier frames only, and the output at frame
+$t$ is the forecast of frame $t+1$. It works at width 512 (projected in and out of the
+encoder's 1024), with depth 8, 8 heads, learned temporal and spatial embeddings and no
+dropout, about 26\,M parameters. Its output is the current frame plus a learned update
+whose head is initialised at zero, so the untrained model is exactly the persistence
+baseline; much of the motion is a martingale that nothing can beat, and the model
+should only learn what is predictable on top of it.
+
+It is trained on 8 context latent frames with an L1 loss on per-channel z-scored
+features, on the next frame (teacher forcing) and on a two-step rollout in which its own
+forecast is fed back, with AdamW (learning rate $10^{-4}$, cosine schedule) for 50
+epochs. Longer horizons are reached by autoregressive rollout. Forecasts are mapped back
+to raw feature space and read by the frozen Gate~1 probes.
+
+\paragraph{Gate 2.} Forecasts decode to correct physics if, at $+5$ on diffusion,
+reaction and ripening, the size-distribution distance (Wasserstein) to the truth is at
+least 30\,\% below that of persistence, and the growth exponent fitted to the probed mean
+radius is within $\pm 0.1$ of the true one where it is defined.
+
+\subsection{Position-Free Forecasting}
+\label{sec:pooled}
+
+Section~\ref{sec:res-rq1} shows that positions are not predictable on this instrument but
+sizes are. The position-free state is therefore the average of the 256 tokens of a latent
+frame, a single 1024-dimensional vector per frame. A ridge readout (regularisation chosen
+on validation data) maps it to the z-scored count, mean radius and total area; it is
+fitted once and frozen. It was chosen, before any forecast was made, as the first of
+three candidate states (mean; mean and standard deviation; a $2 \times 2$ grid of means)
+to read mean radius at $R^2 \geq 0.8$ and recover the true growth exponents within
+$\pm 0.1$ from the true future latents.
+
+Two forecasters are trained on this state without labels, each predicting horizons
+$+1$ to $+24$ directly from 8 context frames:
+\begin{itemize}
+  \item \textbf{A, linear}: the 8 context frames are projected onto the top 64 principal
+    components, a ridge regression maps their coefficients to those of the future frames,
+    and the result is projected back;
+  \item \textbf{B, causal transformer}: each pooled frame is one token (width 256,
+    depth 4, 4 heads, causal attention, a learned horizon embedding), trained with L1 on
+    the z-scored state (AdamW, $10^{-3}$, 100 epochs), with the checkpoint chosen on
+    validation L1 at $+24$.
+\end{itemize}
+
+\paragraph{Gate 2$'$.} On diffusion and reaction clips, the reference is whichever
+trend-blind baseline (persistence, context mean, pooled trend) has the lowest mean-radius
+error at $+24$, which favours the baselines. A forecaster passes if (1) on every growing
+process where the true future itself beats the reference, its paired gain over the
+reference has an interval above 0; (2) its median growth exponent over $+1$ to $+24$ is
+within $\pm 0.1$ of the true one on both growing processes; and (3) its median exponent on
+static clips is within $\pm 0.1$ of 0, so that it does not invent growth.
+
+\subsection{Adapting the Encoder}
+\label{sec:method-encoder}
+
+To measure what freezing the encoder costs (Section~\ref{sec:res-encoder}), we train
+three encoders under the Gate~1 heads and loss, on the same input and split: the frozen
+encoder (\textsf{F}, probes only, trained for the fixed Gate~1 schedule); the same encoder
+with LoRA~\cite{hu2022lora} adapters of rank 16 on the query, key, value and output
+projections of all 24 layers (\textsf{L}); and a four-block convolutional network with
+stride 16 trained from scratch, which outputs the same $16 \times 16$ token grid
+(\textsf{C}). \textsf{L} and \textsf{C} are trained end to end and keep the checkpoint
+with the lowest validation loss. Each encoder is trained on 100, 30 and 10\,\% of the
+training clips, as nested subsets identical across encoders, with the number of epochs
+scaled by the inverse fraction so that every run sees the same number of samples.
+
+\subsection{Evaluation Protocol}
+\label{sec:protocol}
+
+\paragraph{Pre-registration.} For every experiment, the question, the methods, the
+pass/fail criteria and a written prediction of the outcome were fixed in the project
+plan, and committed to version control, before any number was computed. Results are
+reported against those criteria even when a criterion later turned out to be badly
+posed; such cases are labelled, and no verdict was changed after the fact. Analyses that
+were not planned are labelled as post hoc.
+
+\paragraph{Baselines.} Every forecast is compared with trend-blind baselines that use
+the same context: \emph{persistence} (the last context frame held), the \emph{context
+mean} (the average of the context frames held) and, for the position-free state, the
+\emph{pooled trend} (the last context reading scaled by the median growth ratio of the
+training clips at each horizon, one curve for all processes).
+
+\paragraph{Floors and ceilings.} Before a criterion is judged, we measure what the best
+possible input would achieve: the probes applied to the \emph{true} future latents (the
+floor of any forecast read through them), the perfect-detector MSD, and, on the
+simulator's ground truth alone, how much the context can reveal at the probes' reading
+noise. A process whose floor cannot beat the reference is reported as unpowered, not as
+a failure. These checks run on ground truth in seconds and decided, each time, whether a
+GPU run was worth doing.
+
+\paragraph{Statistics.} All intervals are 95\,\% bootstrap intervals over test clips
+(2000 resamples, fixed seed), with the same resamples for every method, so differences
+between methods are paired. Readout error is also reported as an sd-equivalent
+(mean absolute error divided by 0.80, its ratio for a normal distribution), which lets
+it be compared with the reading noise used in the ground-truth ceilings.
