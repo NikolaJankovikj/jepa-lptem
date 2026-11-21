@@ -164,7 +164,8 @@ def encode_forecasts(forecasts: dict, probes: Path, device: str) -> dict:
         return tokens.astype(np.float32).mean(1), reading * sd + mu
 
     out = {}
-    for clip, by_ctx in forecasts.items():
+    for i, (clip, by_ctx) in enumerate(forecasts.items()):
+        LOG.info(f"[encode {i + 1}/{len(forecasts)}] {clip}")
         for ctx, frames in by_ctx.items():
             pairs = [read(f) for f in frames.reshape(-1, FORECAST, *frames.shape[-2:])]
             out[f"{clip}/{ctx}/pooled"] = np.stack([p for p, _ in pairs])
@@ -182,6 +183,9 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--encode", action="store_true")
     ap.add_argument(
+        "--encode-only", action="store_true", help="skip training; encode --out/forecasts.npz"
+    )
+    ap.add_argument(
         "--probes", type=Path, default=Path("experiments/gate1-perframe/probes.pt")
     )
     return ap.parse_args()
@@ -192,19 +196,32 @@ def save_forecasts(forecasts: dict, out: Path) -> None:
     np.savez(out / "forecasts.npz", **flat)
 
 
+def load_forecasts(out: Path) -> dict:
+    """``forecasts.npz`` back to ``{clip: {ctx: frames}}``."""
+    z = np.load(out / "forecasts.npz")
+    forecasts: dict = {}
+    for key in z.files:
+        clip, ctx = key.rsplit("/", 1)
+        forecasts.setdefault(clip, {})[ctx] = z[key]
+    return forecasts
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
     device = pick_device()
     torch.manual_seed(args.seed)
-    clips = Clips(args.tubelets)
-    model, history = train(PixelForecaster().to(device), clips, args, device)
-    args.out.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), args.out / "convlstm.pt")
-    (args.out / "history.json").write_text(json.dumps(history, indent=1))
-    forecasts = forecast_test(model, clips, device)
-    save_forecasts(forecasts, args.out)
-    if args.encode:
+    if args.encode_only:
+        forecasts = load_forecasts(args.out)
+    else:
+        clips = Clips(args.tubelets)
+        model, history = train(PixelForecaster().to(device), clips, args, device)
+        args.out.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), args.out / "convlstm.pt")
+        (args.out / "history.json").write_text(json.dumps(history, indent=1))
+        forecasts = forecast_test(model, clips, device)
+        save_forecasts(forecasts, args.out)
+    if args.encode or args.encode_only:
         np.savez(
             args.out / "encoded.npz", **encode_forecasts(forecasts, args.probes, device)
         )
