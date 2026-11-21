@@ -7,9 +7,6 @@ bootstrap intervals (2000 resamples, the same resamples for every model, so that
 differences are paired). Every pass/fail criterion and every prediction quoted here was
 fixed before the corresponding number was computed (Section~\ref{sec:protocol}).
 
-% TODO figures: predicted vs true size distribution at +10; probed growth curve over
-% r ~ t^{1/3}; gain vs horizon by dose; merge AUC vs lag; data-efficiency curve.
-
 \subsection{Reading the Present}
 \label{sec:res-gate1}
 
@@ -62,7 +59,7 @@ The failure has a structural cause, which we measured on the simulator's ground 
 token within one latent step, and by $+24$ only 6\,\% remain. For a token whose particle
 may or may not still be there, the L1-optimal deterministic forecast is background, so
 an optimal deterministic token predictor erases particles rather than merely blurring
-them, whatever the loss or rollout length. The same fraction (0.47--0.51 at $+1$) holds
+them, whatever the loss or rollout length. Larger patches keep more of their particles (Figure~\ref{fig:persistence}), but only the whole crop keeps all of them. The same fraction (0.47--0.51 at $+1$) holds
 for every process.
 
 \begin{table}[h]
@@ -80,6 +77,13 @@ for every process.
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.55\textwidth]{fig_persistence}
+  \caption{Fraction of particles whose centre stays in the same patch, by patch size and horizon, on simulator ground truth. At the token size half leave in one step.}
+  \label{fig:persistence}
+\end{figure}
 
 What stays predictable is growth. From eight noisy readings of the mean radius, at the
 probe's own reading noise, a 20-term ridge regression without labels cuts the $+24$
@@ -116,10 +120,17 @@ $1/3$ / $1/2$. Table~\ref{tab:pooled} compares two label-free forecasters on thi
   \end{tabular}
 \end{table}
 
-Both forecasters carry each clip's growth beyond the trend, so the size criterion passes
+Figure~\ref{fig:pooled-forecast} shows the error against horizon. Both forecasters carry each clip's growth beyond the trend, so the size criterion passes
 on both processes, but their exponents are damped and miss the $\pm 0.1$ bar (Gate~2$'$
 fails for both, as pre-registered). The larger model is not significantly better, and it
 invents growth on static clips (0.110).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig_pooled_forecast}
+  \caption{Mean-radius error of the linear position-free forecaster and the trend-blind baselines against horizon (test, physics stratum, context 8). The dashed floor is the readout applied to the true future latents.}
+  \label{fig:pooled-forecast}
+\end{figure}
 
 \paragraph{The damping is the context's, not the model's.}
 Three ground-truth checks locate the exponent shortfall.
@@ -157,12 +168,19 @@ minus high dose at $+24$, gives $+0.32$ $[-0.20, +1.03]$\,px on diffusion and $+
 $[-0.61, +1.27]$\,px on reaction clips: a penalty is not shown. With about 15 clips per
 bin and process this test was close to unpowered, as predicted.
 
-At $+1$ (not pre-registered) the penalty is $+0.41$ / $+0.64$ / $+0.49$\,px on diffusion /
+At $+1$ (not pre-registered; Figure~\ref{fig:dose}) the penalty is $+0.41$ / $+0.64$ / $+0.49$\,px on diffusion /
 reaction / static clips, all intervals above 0. The penalty stays at 0.3--0.6\,px at every
 horizon while the forecast error itself grows, so by $+24$ the error of extrapolating
 growth swamps it. For exponents, the ceiling moves by at most 0.034 between dose bins,
 against 0.07--0.10 from doubling the context. Over 6--75\,e/px, more frames help growth
 recovery more than brighter frames.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig_dose}
+  \caption{Error of the linear forecaster (context 16) at low and high electron dose, with the floor of each dose bin (dashed). The low-dose penalty is roughly constant across horizons and enters through the readout.}
+  \label{fig:dose}
+\end{figure}
 
 \noindent\textbf{Answer to RQ3:} forecast quality degrades strongly with horizon and mildly
 with dose, by a roughly constant offset that enters through the readout. The thickness
@@ -195,7 +213,7 @@ each merge against patches around particles far from any merge
 \end{table}
 
 The forecaster's error is larger where two particles merge than where one just moves,
-so it \emph{detects} merges. It is not a specific detector: it beats only the raw latent
+so it \emph{detects} merges (Figure~\ref{fig:merges}). It is not a specific detector: it beats only the raw latent
 change ($+0.075$ $[+0.033, +0.112]$, by denoising it) and ties the context average and the
 pixel signal. It does not \emph{anticipate} merges: one step before contact every signal
 is above chance, pixels included, because a pre-merge patch already holds two particles,
@@ -203,6 +221,13 @@ and the forecaster adds nothing to that ($-0.065$ against pixels). One step afte
 merge its AUC falls to 0.57 while the context average and the pixels stay near 0.70: the
 forecaster has seen the merged particle and now forecasts it. To a deterministic
 forecaster, a random encounter is a one-frame surprise.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.6\textwidth]{fig_merges}
+  \caption{Separating merge patches from patches around moving particles, by latent steps from the merge (test, 48 merges). The band is the 95\,\% interval of the forecaster's error. No signal anticipates the merge beyond the cue that two particles are already close, and the forecaster adapts one step after it.}
+  \label{fig:merges}
+\end{figure}
 
 \noindent\textbf{Answer to RQ2:} prediction error detects coalescence as it happens but does
 not anticipate it, and simple baselines detect it equally well.
@@ -236,7 +261,7 @@ Table~\ref{tab:real} gives four checks, from the input to the forecast.
   \end{tabular}
 \end{table}
 
-No real movie lies inside the simulated feature distribution. The movie the simulator was
+No real movie lies inside the simulated feature distribution (Figure~\ref{fig:containment}). The movie the simulator was
 calibrated on comes nearest and sits at the limit (1.51 against 1.50); every other one is
 far outside. The readout reads real particles small, and the forecaster loses to the
 context mean on every movie from the first step. It fails at the input, not through
@@ -246,13 +271,20 @@ error of the context mean 0.30 vs 0.40), yet the forecaster's one-step error dou
 movies were expected inside), B mostly wrong, C mixed and D right. The claims of this
 thesis are therefore scoped to simulation.
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_containment}
+  \caption{Containment of each real movie's pooled latents against the simulated ones (check A): the ratio of the distance to the nearest synthetic sample over the typical synthetic-to-synthetic distance. The dashed line is the largest ratio of a held-out synthetic clip.}
+  \label{fig:containment}
+\end{figure}
+
 \subsection{Frozen, Adapted or From Scratch: The Encoder}
 \label{sec:res-encoder}
 
 Section~\ref{sec:res-gate1} used the encoder frozen. To see what that choice costs, we
 compare it with the same encoder adapted by LoRA (\textsf{L}, 7.62\,M trainable
 parameters) and with a small CNN trained from scratch (\textsf{C}, 1.51\,M parameters),
-with everything but the encoder held fixed (Section~\ref{sec:method-encoder}). Table~\ref{tab:encoders} gives the result.
+with everything but the encoder held fixed (Section~\ref{sec:method-encoder}). Table~\ref{tab:encoders} and Figure~\ref{fig:data-efficiency} give the result.
 
 \begin{table}[h]
   \centering
@@ -287,6 +319,13 @@ $\pm 0.005$, intervals spanning 0), while at 10\,\% LoRA leads the CNN by 0.065 
 and 0.06 on mean radius, and LoRA on 160 clips matches the frozen encoder on 1600. We had
 predicted that pretraining would pay with few labels even without adaptation; it does
 not ($F - C = -0.075$ $[-0.121, -0.031]$ on count at 10\,\%).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig_data_efficiency}
+  \caption{Encoder comparison against the number of training clips (test, physics stratum, 95\,\% intervals). LoRA on 160 clips matches the frozen encoder on 1600.}
+  \label{fig:data-efficiency}
+\end{figure}
 
 Positions were never the bottleneck: MSD$/4Dt$ is within 6\,\% of the perfect-detector
 ceiling for every encoder. Low dose costs every encoder about 0.2\,px of reading sd;

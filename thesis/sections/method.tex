@@ -25,10 +25,17 @@ see the whole window, including its future. A forecaster given eight such contex
 frames is partly given the answer. Re-encoding the context alone agreed with the cached
 latents at a token cosine of only 0.74--0.84, worst next to the forecast, and the one
 clear win of the first forecaster (detection F1 0.80 against 0.56 for persistence at
-$+1$) fell to 0.54 with honest contexts. With per-frame encoding, frames shared between
+$+1$) fell to 0.54 with honest contexts (Figure~\ref{fig:lookahead}). With per-frame encoding, frames shared between
 windows agree at cosine 1.000. Every result in this thesis uses per-frame features; the
 earlier results were discarded. The warning applies to any latent world model built on
 a video encoder with temporal attention.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.55\textwidth]{fig_lookahead}
+  \caption{The look-ahead leak. The context of 316 test windows is re-encoded without its future; with whole-window encoding the context features change, most next to the forecast, while per-frame features do not change at all.}
+  \label{fig:lookahead}
+\end{figure}
 
 \subsection{Reading Physics off Latents}
 \label{sec:gate1}

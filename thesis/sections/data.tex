@@ -68,10 +68,17 @@ in two strata:
 \end{itemize}
 Each clip stores its frames, every particle's position and radius at every frame, the
 merge events (1035 in total, about 2.6 per coalescence clip) and every simulation
-parameter. The mean liquid thickness is fixed at 150\,nm. An audit of the full run found
+parameter (Figure~\ref{fig:simulator}). The mean liquid thickness is fixed at 150\,nm. An audit of the full run found
 no unreadable or empty clip; on average 0.27\,\% of pixels are black (worst clip
 2.89\,\%), which is physical: at the lowest dose behind the thickest liquid a pixel
 receives about four electrons, so a few percent receive none.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig_simulator}
+  \caption{One simulated clip per process (physics stratum), first and last of 100 frames, in the $256 \times 256$\,px crop the model sees, with each clip's electron dose. Growing particles start small and are hard to see at low dose; static particles keep their size; ripening coarsens the population; coalescing particles merge.}
+  \label{fig:simulator}
+\end{figure}
 
 For the model, each clip is centre-cropped to $256 \times 256$\,px (cropped, never
 resized, so that one pixel stays one detector pixel) and cut into two 64-frame windows
