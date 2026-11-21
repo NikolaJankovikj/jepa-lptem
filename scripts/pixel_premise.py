@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import pickle
 from pathlib import Path
 
 import numpy as np
@@ -177,7 +178,7 @@ def shift(records: list[dict], variant: str, path: str, col: int | None) -> dict
     values = [per_window(r) for r in records]
     return {
         "mean": float(np.nanmean(values)),
-        "ci": bootstrap_ci(values, [r["clip"] for r in records]),
+        "ci": bootstrap_ci(values, [r["clip"] for r in records], np.nanmean),
     }
 
 
@@ -208,6 +209,20 @@ def analyse(records: list[dict]) -> dict:
     }
 
 
+def load_or_collect(args: argparse.Namespace) -> list[dict]:
+    if args.records.exists():
+        return pickle.loads(args.records.read_bytes())
+    device = pick_device()
+    clips = sorted(args.clips.glob("*_physics.npz"))[: args.limit]
+    records = collect(
+        clips,
+        make_encoder(device, per_frame=True),
+        Readers(args.readout, args.probes, device),
+    )
+    args.records.write_bytes(pickle.dumps(records))
+    return records
+
+
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clips", type=Path, required=True)
@@ -218,6 +233,12 @@ def parse_args() -> argparse.Namespace:
         "--probes", type=Path, default=Path("experiments/gate1-perframe/probes.pt")
     )
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument(
+        "--records",
+        type=Path,
+        default=Path("data/pixel-premise-records.pkl"),
+        help="cache of the readings: reused if present, so re-analysis takes seconds",
+    )
     ap.add_argument("--out", type=Path, required=True)
     return ap.parse_args()
 
@@ -225,13 +246,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
-    device = pick_device()
-    clips = sorted(args.clips.glob("*_physics.npz"))[: args.limit]
-    records = collect(
-        clips,
-        make_encoder(device, per_frame=True),
-        Readers(args.readout, args.probes, device),
-    )
+    records = load_or_collect(args)
     result = analyse(records)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "premise.json").write_text(json.dumps(result, indent=1))
