@@ -5,7 +5,8 @@ All numbers in this section are on the held-out test clips of the synthetic data
 (Section~\ref{sec:dataset}), unless a real movie is named. Intervals are 95\,\% clip
 bootstrap intervals (2000 resamples, the same resamples for every model, so that
 differences are paired). Every pass/fail criterion and every prediction quoted here was
-fixed before the corresponding number was computed (Section~\ref{sec:protocol}).
+fixed before the corresponding number was computed (Section~\ref{sec:protocol}). RQ3 is reported before RQ2 because it
+builds on the forecaster of RQ1 directly, while RQ2 adds a separate set of events.
 
 \subsection{Reading the Present}
 \label{sec:res-gate1}
@@ -220,7 +221,9 @@ is above chance, pixels included, because a pre-merge patch already holds two pa
 and the forecaster adds nothing to that ($-0.065$ against pixels). One step after the
 merge its AUC falls to 0.57 while the context average and the pixels stay near 0.70: the
 forecaster has seen the merged particle and now forecasts it. To a deterministic
-forecaster, a random encounter is a one-frame surprise.
+forecaster, a random encounter is a one-frame surprise. The position-free forecaster's
+error, computed on the whole frame, separates merges less well (0.598): averaging over the
+frame dilutes a change that happens in one place.
 
 \begin{figure}[t]
   \centering
@@ -341,7 +344,18 @@ is well inside the noise.
 \subsection{Summary}
 \label{sec:res-summary}
 
-\begin{table}[h]
+Table~\ref{tab:summary} collects the answers. Read together, the results separate what a
+frozen video model can and cannot do on this instrument. It reads the present well, size
+and diffusion close to their ceilings, and an adapted encoder reads it better still. What
+it cannot do is forecast where particles go: the motion is random at the scale of a token,
+so a deterministic forecast of the tokens erases the particles, and its prediction error
+marks merges only once they have happened. What it can forecast is the position-free part
+of the state, the growth of the particle population, up to the limit set by how noisy and
+how short the context is; and how much that limit costs depends more on the number of
+context frames than on the electron dose. All of it holds in simulation and none of it on
+the real movies we could obtain.
+
+\begin{table}[H]
   \centering
   \caption{Answers to the research questions.}
   \label{tab:summary}
@@ -352,16 +366,16 @@ is well inside the noise.
     RQ1: do predicted latents decode to correct future physics?
       & Partly. Token-level forecasts erase particles for a structural reason. A
         label-free linear forecaster on the frame-averaged latent carries growth; its
-        exponents are damped by the information limit of the noisy context. \\
+        exponents are damped by the information limit of the noisy context. \\ \addlinespace
     RQ2: does prediction error anticipate coalescence?
       & It detects merges (AUC 0.71) but does not anticipate them, and simple baselines
-        detect them as well. \\
+        detect them as well. \\ \addlinespace
     RQ3: how does quality degrade with horizon and SNR?
       & Strongly with horizon, mildly with dose (0.3--0.6\,px at every horizon, through
-        the readout). Context length matters more than dose for exponents. \\
+        the readout). Context length matters more than dose for exponents. \\ \addlinespace
     Real data
       & No transfer: real movies lie outside the simulated feature distribution, and the
-        forecaster loses to the context mean on every movie. \\
+        forecaster loses to the context mean on every movie. \\ \addlinespace
     Encoder
       & Frozen V-JEPA~2 is the weakest reader; LoRA adaptation ties a CNN with full data
         and leads it with 10\,\% of the labels. \\

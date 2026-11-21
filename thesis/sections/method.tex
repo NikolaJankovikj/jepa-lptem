@@ -5,6 +5,42 @@ The pipeline has three stages: a frozen video encoder turns frames into latent t
 a forecaster rolls the latents forward in time, and readout probes turn latents, present
 or forecast, into physical numbers that are compared with the simulator's ground truth.
 Only the forecaster and the probes are trained; the encoder never sees a label.
+Figure~\ref{fig:pipeline} shows the pipeline.
+
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[
+      box/.style={draw, rounded corners=2pt, align=center, font=\footnotesize,
+                  text width=25mm, minimum height=11mm, inner sep=2pt},
+      frozen/.style={box, fill=black!8},
+      train/.style={box, fill=blue!8},
+      gt/.style={box, dashed},
+      arr/.style={-{Stealth[length=2mm]}}]
+    \node[box]    (frames) at (0, 0)      {LPTEM frames, $256^2$ crop};
+    \node[frozen] (enc)    at (3.2, 0)    {V-JEPA~2 ViT-L (frozen)};
+    \node[box]    (tok)    at (6.4, 0)    {latent frame: 256 tokens};
+    \node[train]  (tf)     at (9.6, 0)    {token\\forecaster (\ref{sec:token-forecast})};
+    \node[train]  (probe)  at (12.8, 0)   {probes (\ref{sec:gate1}):\\count, radius,\\area, centroids};
+    \node[box]    (mean)   at (6.4, -1.9) {frame mean of the tokens};
+    \node[train]  (pf)     at (9.6, -1.9) {position-free\\forecaster (\ref{sec:pooled})};
+    \node[train]  (ridge)  at (12.8, -1.9) {ridge readout:\\count, radius,\\area};
+    \node[gt]     (gt)     at (12.8, -3.8) {simulator ground truth};
+    \draw[arr] (frames) -- (enc);
+    \draw[arr] (enc) -- (tok);
+    \draw[arr] (tok) -- (tf);
+    \draw[arr] (tf) -- (probe);
+    \draw[arr] (tok) -- (mean);
+    \draw[arr] (mean) -- (pf);
+    \draw[arr] (pf) -- (ridge);
+    \draw[dashed, <->] (gt) -- (ridge);
+    \draw[dashed, <->] (gt.east) -- ++(4mm, 0) |- (probe.east);
+  \end{tikzpicture}
+  \caption{The pipeline. Frames are encoded by the frozen encoder (grey); trained parts
+    are blue. Forecasts are made either on all tokens or on their frame mean, and are read
+    by probes trained on present latents; the readings are compared with the simulator's
+    ground truth.}
+  \label{fig:pipeline}
+\end{figure}
 
 \subsection{Frozen Encoder and Feature Extraction}
 \label{sec:encoder}
