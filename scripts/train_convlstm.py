@@ -186,6 +186,9 @@ def parse_args() -> argparse.Namespace:
         "--encode-only", action="store_true", help="skip training; encode --out/forecasts.npz"
     )
     ap.add_argument(
+        "--shard", default="0/1", help="i/n: encode every n-th clip from the i-th (one per GPU)"
+    )
+    ap.add_argument(
         "--probes", type=Path, default=Path("experiments/gate1-perframe/probes.pt")
     )
     return ap.parse_args()
@@ -222,9 +225,10 @@ def main() -> None:
         forecasts = forecast_test(model, clips, device)
         save_forecasts(forecasts, args.out)
     if args.encode or args.encode_only:
-        np.savez(
-            args.out / "encoded.npz", **encode_forecasts(forecasts, args.probes, device)
-        )
+        i, n = map(int, args.shard.split("/"))
+        mine = {c: f for k, (c, f) in enumerate(forecasts.items()) if k % n == i}
+        name = "encoded.npz" if n == 1 else f"encoded-{i}of{n}.npz"
+        np.savez(args.out / name, **encode_forecasts(mine, args.probes, device))
 
 
 if __name__ == "__main__":
