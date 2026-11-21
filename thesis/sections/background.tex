@@ -1,10 +1,87 @@
 \section{Background}
+\label{sec:background}
+
 \subsection{Liquid-Phase Transmission Electron Microscopy}
-TODO
-% Image formation, dose, SNR, why the data is hard. thesis_brief.md §1.
+\label{sec:lptem}
+
+A transmission electron microscope forms an image from the electrons that pass through
+a thin sample, and resolves structure down to the sub-nanometre scale. A conventional
+sample must be dry and in vacuum. In liquid-phase TEM (LPTEM) a thin layer of liquid is
+sealed between two electron-transparent membranes, usually silicon nitride, so that
+processes in solution can be filmed as they happen: nanoparticles diffusing, nucleating,
+growing, dissolving and merging. These processes decide how catalysts, drug carriers and
+new materials form, and LPTEM is one of very few ways to watch them directly.
+
+The price is image quality. In bright-field imaging a metal particle appears dark
+because it scatters electrons out of the beam, and the contrast follows Beer--Lambert
+attenuation: the intensity behind a stack of materials falls exponentially with the
+thickness of each material divided by its inelastic mean free path. The liquid and the
+membranes attenuate the beam as well, so the thicker the liquid, the lower the
+contrast. The dose must also be kept low, because the beam itself drives chemistry in the
+liquid. At a few to a few tens of electrons per pixel per frame, shot noise, which
+follows a Poisson distribution, dominates every frame, and small particles are barely
+distinguishable from it. The detector's transfer function blurs the image further, and
+the liquid cell often bulges, so the liquid thickness varies across the field of view.
+Section~\ref{sec:simulator} builds each of these effects into the simulator.
+
 \subsection{Physics of Nanoparticle Dynamics}
-TODO
-% MSD, LSW r ~ t^{1/3} vs reaction-limited t^{1/2}, coalescence.
+\label{sec:physics}
+
+Nanoparticle dynamics in solution follow a few well-characterised laws, which is what
+makes a quantitative test of a learned model possible.
+
+\paragraph{Diffusion.} A particle undergoing Brownian motion in two dimensions has a
+mean squared displacement $\langle |\Delta\mathbf{x}(t)|^2 \rangle = 4Dt$, where $D$ is
+the diffusion coefficient. By the Stokes--Einstein relation $D$ falls with particle
+radius, so larger particles diffuse more slowly. Departures from linear growth of the
+MSD (anomalous diffusion) carry information about the particle's environment. The MSD
+of a particle tracker is limited by the localisation error and by track length, so a
+measured MSD should be compared with that of a perfect detector under the same
+sampling.
+
+\paragraph{Growth.} When a particle grows from monomers in solution, its radius follows a
+power law $r \propto t^{\alpha}$ whose exponent identifies the rate-limiting step. If
+growth is limited by diffusion of monomers to the surface, $\alpha = 1/3$; if it is limited
+by the reaction at the surface, $\alpha = 1/2$. In Ostwald ripening, the
+Lifshitz--Slyozov--Wagner theory~\cite{lifshitz1961,wagner1961}, small particles dissolve and
+feed larger ones, the number of particles falls, the total volume is conserved, and the
+mean radius coarsens as $t^{1/3}$. Estimating $\alpha$ from a noisy, short time series
+of radii is the main quantitative test of this thesis.
+
+\paragraph{Coalescence.} When two particles touch they can merge into one. A merge
+conserves volume, so the new radius is $(r_1^3 + r_2^3)^{1/3}$, and it changes the
+particle count and the size distribution abruptly. Unlike growth and diffusion, a merge
+is an event, discrete and timed, which makes it a natural test of whether a model can
+anticipate change.
+
 \subsection{Joint-Embedding Predictive Architectures}
-TODO
-% I-JEPA, V-JEPA 2, latent world models (V-JEPA 2-AC, DINO-WM).
+\label{sec:jepa}
+
+Self-supervised video models learn from video alone by predicting one part of the input
+from another. Generative models predict pixels. Joint-embedding predictive
+architectures (JEPAs)~\cite{lecun2022path} instead predict in a learned representation
+space: an encoder maps both the visible context and the hidden target to embeddings,
+and a predictor is trained to output the target's embedding from the context's, with
+the target encoder updated as an exponential moving average of the context encoder to
+prevent collapse. Because the loss is computed on embeddings, the model need not spend
+capacity on unpredictable detail, such as the exact pattern of shot noise, which a pixel
+loss would force it to model or blur. I-JEPA applied the idea to images~\cite{ijepa},
+V-JEPA to video~\cite{vjepa}.
+
+V-JEPA~2~\cite{assran2025vjepa2} scales the approach to over a million hours of
+internet video. Its ViT-L encoder, used in this thesis, splits a clip into tubelets of 2
+frames by $16 \times 16$ pixels, embeds each as a token, and processes all tokens with a
+vision transformer; it is trained to predict the embeddings of masked spatio-temporal
+regions. Frozen V-JEPA representations have been shown to support intuitive physics
+judgements on natural video, while pixel-prediction models stay near
+chance~\cite{garrido2025intuitive}.
+
+\paragraph{Latent world models.} A world model predicts how the state of an environment
+evolves. A latent world model does so in the representation space of an encoder: it
+encodes the past frames and rolls their latents forward with a learned predictor.
+V-JEPA~2-AC trains an action-conditioned, block-causal predictor on top of the frozen
+V-JEPA~2 encoder, with each frame encoded on its own, and uses it to plan robot actions
+by minimising the latent distance to a goal image~\cite{assran2025vjepa2}. DINO-WM does
+the same on frozen DINOv2 patch features~\cite{dinowm}. This thesis uses the same recipe
+without actions: the encoder is frozen, the predictor forecasts latent frames, and the
+forecasts are judged by reading physical observables off them.

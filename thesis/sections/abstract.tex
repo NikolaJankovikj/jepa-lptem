@@ -1,7 +1,28 @@
 \section*{Abstract}
 \addcontentsline{toc}{section}{Abstract}
-% Source: docs/findings.md §1 and §7. Write last.
-TODO
 
-\medskip\noindent\textbf{Keywords:} Liquid-phase TEM, self-supervised learning,
-JEPA, latent world models, video forecasting, nanoparticle dynamics.
+Liquid-phase transmission electron microscopy (LPTEM) films nanoparticles as they move,
+grow and merge in liquid, but its frames are dominated by shot noise, and machine
+learning for it has so far been descriptive. This thesis asks whether a self-supervised
+video model, trained on internet video and never shown a microscope, learns the physics
+of nanoparticles well enough to forecast it. We build a simulator of LPTEM video with an
+exact answer key, encode its frames with a frozen V-JEPA~2 encoder, forecast the latent
+states, and read particle size, growth exponent, diffusion and merges off the forecasts
+with trained probes, against baselines and ceilings and under criteria fixed before each
+result. The frozen encoder reads size, area and diffusion from single frames at
+$R^2 \approx 0.9$ and at the mean squared displacement of a perfect detector; adapting it
+with LoRA reads them markedly better, and with a tenth of the labels matches the frozen
+encoder on all of them. Deterministic forecasts of the encoder's tokens cannot decode to
+correct physics: half the particles leave their token in a single step, so the optimal
+single guess erases them. A position-free state, the frame average of the tokens, can be
+forecast without labels; a linear forecaster on it carries each clip's growth beyond every
+trend-blind baseline, and its remaining exponent error is what eight to sixteen noisy
+frames allow. Forecast quality degrades strongly with horizon and mildly with electron
+dose. Prediction error detects particle merges as they happen but does not anticipate
+them, and simple baselines detect them as well. None of these results transfers to
+published real LPTEM movies, which lie outside the simulated feature distribution. The
+model learns what is predictable, growth, and not what is not, where each particle goes.
+
+\medskip\noindent{\raggedright\textbf{Keywords:} Liquid-Phase Transmission Electron Microscopy,
+Self-Supervised Learning, Joint-Embedding Predictive Architectures, Latent World Models,
+Video Forecasting, Nanoparticle Dynamics, Simulation-Based Evaluation.\par}

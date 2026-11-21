@@ -1,9 +1,6 @@
 \section{Discussion}
 \label{sec:discussion}
 
-% Citations marked [?] (keys starting with todo-) are papers read only as abstracts so
-% far; verify each before the Related Work pass replaces the key.
-
 \subsection{Why Token-Level Latent Forecasts Collapse}
 
 The token-level forecaster converged and beats both baselines in feature space (by 26\,\%
@@ -17,32 +14,34 @@ feature-space loss bought blur.
 Token persistence (Table~\ref{tab:token-persistence}) gives the mechanism in numbers.
 Half the particles leave their token in one step, so for most tokens the future is a
 coin flip between particle and background, and the L1-optimal deterministic forecast is
-background. This is the conditional-mean collapse that recent work on stochastic JEPA
-world models describes~\cite{todo-mopjepa,todo-varjepa}: when the future branches, a
-deterministic predictor outputs an average that corresponds to no state at all. Our
+background. This is the general weakness of a point-valued predictor under a branching future: trained
+with a regression loss, it outputs a central value of the possible futures, which need
+not be a possible future itself. Recent JEPA world models replace the single latent
+successor with a set of branches~\cite{branchjepa} or a predictive distribution~\cite{vjepa_variational}
+for this reason. Our
 contribution is to show it on a scientific instrument, measure it, and connect it to a
 physical quantity, the displacement of a Brownian particle over one latent step.
 
-Why do V-JEPA~2-AC~\cite{assran2025vjepa2} and DINO-WM~\cite{todo-dinowm} not run into
+Why do V-JEPA~2-AC~\cite{assran2025vjepa2} and DINO-WM~\cite{dinowm} not run into
 this? Their environments are close to deterministic, because actions drive the change,
 and they never decode their forecasts: they rank candidate actions by latent distance to
 a goal, where a blurred forecast is harmless. We copied their recipe (per-frame encoding,
 L1, a short rollout) into a stochastic setting and then decoded the forecasts. The same
 gap, between a latent that is \emph{decodable} and one that is \emph{forecastable}, has
-since been reported for robotic control~\cite{todo-jepax}.
+since been reported for robotic control~\cite{jepax}.
 
 \subsection{What a Forecastable State Looks Like}
 
 Averaging the tokens of a frame throws away exactly what cannot be forecast, where the
 particles are, and keeps what can, how large they are. In the terms of
-LeCun~\cite{todo-lecun2022}, this is the first of the two ways a JEPA can handle
+LeCun~\cite{lecun2022path}, this is the first of the two ways a JEPA can handle
 uncertainty: a representation that is invariant to the unpredictable. The caveat is that
 we chose that invariance by hand rather than learning it. A ground-truth check makes the
 choice less arbitrary than it looks: the fraction of particles that stay in a patch of
 the image grows with the patch size, and only a patch the size of the whole crop holds
 several particles at the density of our clips. At this density the frame mean is the
 smallest region whose content is predictable. This agrees with the coarse-graining rule
-of the closest LPTEM forecasting work~\cite{todo-li2026}, which sizes its patches so that
+of the closest LPTEM forecasting work~\cite{li2026multiscale}, which sizes its patches so that
 each holds enough particles to define a field.
 
 The remaining error in the growth forecasts is not the model's. Its exponent tracks the
@@ -121,7 +120,7 @@ reading did not, by our pre-registered rule, change the growth-forecast conclusi
     appearance, guided by the feature-space containment check, or self-supervised LoRA
     adaptation on real video.
   \item \emph{Stochastic forecasters for positions}: object-centric stochastic latent
-    dynamics~\cite{todo-lpwm} or forecasters that output a distribution, judged with a
+    dynamics~\cite{lpwm} or forecasters that output a distribution, judged with a
     proper distributional score, instead of a single latent.
   \item \emph{Learning the invariance}: training the encoder or a projection so that its
     state is forecastable, rather than choosing the frame mean by hand.

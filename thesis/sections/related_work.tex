@@ -1,10 +1,72 @@
 \section{Related Work}
-% Source: data/thesis_notes.md (each entry names where it goes).
+\label{sec:related}
+
 \subsection{Machine Learning for LPTEM Video}
-TODO
-% SAM-EM, LEONARDO, PNNL pixel-space LSTM.
+
+Machine learning for electron microscopy of nanoparticles has moved from detection and
+segmentation towards the analysis of dynamics and, more recently, scientific
+inference~\cite{toulkeridou2026review}. For LPTEM video specifically, most methods are
+\emph{descriptive}: they measure what is in the frames. SAM-EM fine-tunes the Segment
+Anything Model to segment and track particles in LPTEM video in real
+time~\cite{samem}. SHINE uses self-supervised learning to denoise high-throughput
+electron micrographs, an approach applicable to LPTEM~\cite{shine}. LEONARDO is a physics-informed
+generative model of nanoparticle diffusion in LPTEM, trained on trajectories extracted
+from video rather than on the video itself~\cite{leonardo}.
+
+Fewer works \emph{predict}. Fu et al.\ train an LSTM to forecast future frames of in situ
+environmental TEM video of Au nanoparticles under reaction conditions, in pixel
+space~\cite{fu2022insitu}. The closest work to ours, Li et al.~\cite{li2026multiscale},
+learns and forecasts the dynamics of nanoparticle self-assembly from LPTEM video, but on
+hand-built coarse-grained fields: particles are first tracked, then binned into fields of
+density and orientational order, and a sparse autoregressive operator is fitted to them.
+There is no self-supervised representation and no learned latent space, and the forecasts
+are not compared with a persistence baseline. We found no work that trains or applies a
+self-supervised video model on raw LPTEM video, forecasts its latent state, and reads
+physical observables such as size, growth exponent, MSD or merges off the forecasts.
+
+\subsection{Self-Supervised Representations of Physical Systems}
+
+Reading physical quantities from a frozen self-supervised encoder with a light probe is
+an established way to ask what the encoder has learned. Qu et al.\ train JEPAs on
+simulations of active matter, shear flow and convection, and regress the governing
+parameters from frozen embeddings with attentive probes; the JEPA embeddings beat those of
+a masked-autoencoder baseline~\cite{qu2026spatiotemporal}. Garrido et al.\ show that
+V-JEPA, predicting in representation space, acquires intuitive physics from natural video
+where pixel predictors do not~\cite{garrido2025intuitive}. Our Gate~1 follows this
+protocol; unlike these works, we also apply the probes to \emph{forecast} latents.
+
 \subsection{Latent World Models and Stochastic Prediction}
-TODO
-% MoP-JEPA, Variational JEPA: conditional-mean collapse.
+
+Latent world models such as V-JEPA~2-AC~\cite{assran2025vjepa2} and
+DINO-WM~\cite{dinowm} forecast in the feature space of a frozen encoder and are judged by
+how well they plan, not by whether their forecasts are correct. Several recent works ask
+the second question. Gonzalez Laiz and Schneider define faithful latent world models by an
+equivariance between the environment's transitions and the latent dynamics, and find that
+none of the state-of-the-art models they study meets it~\cite{gonzalezlaiz2026limits}.
+JEPA-x grounds latents in the physical state through cross-prediction and reports that
+this makes the state more decodable without making it more forecastable~\cite{jepax}.
+Scardecchia and Yang argue that the latent space of video world models should be shaped
+for temporal predictability~\cite{scardecchia2026predictable}.
+
+A second line addresses stochastic futures. A deterministic predictor returns one latent
+successor even when several futures are plausible. Branch-JEPA replaces it with a weighted
+finite set of successors~\cite{branchjepa}, Variational JEPA learns a predictive
+distribution over future latents~\cite{vjepa_variational}, and Latent Particle World Models
+learn object-centric stochastic dynamics from video~\cite{lpwm}. LeCun's original proposal
+names two ways for a JEPA to handle uncertainty: a representation that is invariant to
+what cannot be predicted, and a latent variable in the predictor~\cite{lecun2022path}.
+These works were tested on driving, navigation and control, where actions drive most of
+the change. Nanoparticles in liquid are stochastic without any agent, and their futures
+are continuous rather than a few discrete branches, which makes LPTEM a demanding test
+of both ideas.
+
 \subsection{Simulation-Based Training and the Sim-to-Real Gap}
-TODO
+
+Training on simulated data with an exact answer key, and transferring to real data, is
+common in microscopy, where real ground truth is scarce. The LPTEMsimulator of the Jamali
+lab implements the image formation of LPTEM~\cite{lptemsim} and is the basis of our
+renderer. The usual strategy is to randomise the
+simulator's appearance widely enough that the real data falls inside it. Whether it does
+is most often judged on image statistics. We judge it also in the feature space of the
+encoder that the model actually sees, and find that the two can disagree
+(Section~\ref{sec:res-real}).

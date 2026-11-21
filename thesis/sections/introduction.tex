@@ -1,4 +1,75 @@
 \section{Introduction}
-% Sources: thesis_brief.md §1; docs/findings.md §1 (answers), §7 (contributions).
-% Motivation -> gap (descriptive, not predictive) -> RQ1-3 -> contributions -> outline.
-TODO \cite{assran2025vjepa2}
+\label{sec:intro}
+
+Liquid-phase transmission electron microscopy (LPTEM) records video of nanoparticles
+moving, growing and merging in liquid, at nanometre resolution. It is one of very few
+ways to watch the processes that decide how catalysts, drug carriers and new materials
+form, as they happen. The video is also among the hardest a computer-vision system can
+face: the liquid scatters the electron beam, the dose must stay low because the beam
+itself drives chemistry, and the result is a sequence of frames in which particles are
+barely distinguishable from shot noise.
+
+Machine learning for LPTEM has so far been mostly \emph{descriptive}. Recent systems
+segment and track particles~\cite{samem}, denoise micrographs~\cite{shine}, or model
+trajectories that were first extracted from the video~\cite{leonardo}. Methods that
+\emph{predict} either forecast pixels~\cite{fu2022insitu}, spending capacity on
+reproducing noise, or fit dynamics to hand-built fields computed from tracked
+particles~\cite{li2026multiscale}. Meanwhile, self-supervised video models have learned
+to predict the future of natural video in a learned representation space rather than in
+pixels~\cite{assran2025vjepa2}, and such models show signs of intuitive physics
+understanding~\cite{garrido2025intuitive}. Whether a model of this kind, trained on
+internet video and never shown a microscope, has learned enough to forecast the physics
+of a scientific instrument has not been tested. The test needs physics that is known
+exactly, which real LPTEM video does not supply.
+
+This thesis makes that test. We ask whether a self-supervised video model learns the
+physics of nanoparticles in LPTEM video well enough to forecast it, and break the
+question into three:
+\begin{description}
+  \item[RQ1.] Do latent states predicted by a forecaster on a frozen V-JEPA~2 encoder
+    decode to correct future physics: particle sizes and their distribution, growth
+    exponents, and diffusion?
+  \item[RQ2.] Does the forecaster's prediction error rise before coalescence events, so
+    that it anticipates them?
+  \item[RQ3.] How does forecast quality degrade with the forecast horizon and with the
+    signal-to-noise ratio of the video?
+\end{description}
+The contribution is an evaluation methodology rather than a new architecture. We build a
+simulator of LPTEM video with an exact answer key, train probes that read physical
+observables off V-JEPA~2 latents, and apply them to the latents a forecaster predicts,
+comparing every forecast with trend-blind baselines and with the best that its input
+allows. Every criterion and a prediction of its outcome were fixed before the
+corresponding result was computed, so that either answer, a model that learned the
+physics or one that did not, is a result.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item A simulated LPTEM dataset of 2000 clips over five processes with exact positions,
+    radii and merge times, rendered with a physical image-formation model and validated
+    against its own answer key (Section~\ref{sec:data}).
+  \item Evidence that a frozen V-JEPA~2 encoder reads particle size, area and diffusion
+    from single frames at $R^2 \approx 0.9$ and at the MSD of a perfect detector, and that
+    adapting it with LoRA reads them markedly better, most of all with few labels
+    (Sections~\ref{sec:res-gate1} and~\ref{sec:res-encoder}).
+  \item A structural explanation, measured on ground truth, of why deterministic
+    token-level latent forecasts cannot decode to correct physics on this instrument:
+    half the particles leave their token in one latent step (Section~\ref{sec:res-rq1}).
+  \item A position-free forecaster that carries each clip's growth without labels,
+    with its remaining exponent error traced to the information limit of the noisy
+    context (Section~\ref{sec:res-rq1}).
+  \item Answers to RQ2 and RQ3: prediction error detects merges but does not anticipate
+    them, and forecast quality degrades strongly with horizon and mildly with dose
+    (Sections~\ref{sec:res-rq2} and~\ref{sec:res-rq3}).
+  \item A negative transfer result on published real LPTEM movies, together with three
+    pitfalls that apply beyond this work: the look-ahead leak of video encoders into
+    latent forecasters, criteria set without measuring their floor or ceiling, and
+    published movies that are not usable as data (Sections~\ref{sec:res-real}
+    and~\ref{sec:discussion}).
+\end{enumerate}
+
+\paragraph{Outline.} Section~\ref{sec:background} introduces LPTEM, the physics we test
+against and joint-embedding predictive architectures. Section~\ref{sec:related} reviews
+related work. Section~\ref{sec:data} describes the simulator, the dataset and the real
+movies, and Section~\ref{sec:method} the models and the evaluation protocol.
+Section~\ref{sec:results} reports the results by research question,
+Section~\ref{sec:discussion} discusses them, and Section~\ref{sec:conclusion} concludes.
