@@ -4,8 +4,8 @@
 last context frame (see ``background``). A Gaussian blur conserves ``Σ I`` and leaves
 ``B`` alone, so ``M`` does not change when a forecaster blurs; for spheres of
 constant count ``M ∝ Σ r³``, so the exponent of ``M`` over time, divided by 3, is the
-radius exponent. ``log=True`` gives the Beer–Lambert form ``Σ log(B / I)``, which stays
-proportional to volume when absorption saturates (the pre-registered fallback).
+radius exponent. ``log=True`` gives the Beer–Lambert form ``Σ log(B / I)`` (P0b v1's
+fallback; blur-sensitive, so v2 uses the linear form only).
 
 P0b (premise, ground truth only, seconds):
     uv run python scripts/dark_mass.py --clips data/synthetic/pixel-premise --limit 50 \
@@ -21,11 +21,15 @@ from pathlib import Path
 
 import numpy as np
 from gate2_followup import bootstrap_ci
-from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import binary_dilation, gaussian_filter
 
 LOG = logging.getLogger(__name__)
-MEDIAN_PX = 41
-BACKGROUND_SIGMA = 10
+BACKGROUND_SIGMA = 40
+DETECT_SIGMA = 3
+DETECT_SD = 3  # particle pixels: this many noise sd below the coarse background
+MASK_DILATION = 4
+MAD_TO_SD = 1.4826
+EPS = 1e-6
 VOLUME_TO_RADIUS = 3  # M ∝ r³
 MIN_INTENSITY = 1.0  # uint8 zero-electron pixels; log needs > 0
 CROP = 256
@@ -41,12 +45,33 @@ BLUR_TOL = 0.03
 HELD_TOL = 0.03
 
 
+def quadratic_fit(ref: np.ndarray, keep: np.ndarray) -> np.ndarray:
+    """Least-squares quadratic surface over the kept pixels: the illumination gradient
+    and the bulging liquid layer, without the edge bias a wide filter has on a slope."""
+    yy, xx = np.mgrid[: ref.shape[0], : ref.shape[1]] / ref.shape[0]
+    basis = np.stack([np.ones_like(xx), xx, yy, xx * xx, yy * yy, xx * yy], axis=-1)
+    coef, *_ = np.linalg.lstsq(basis[keep], ref[keep], rcond=None)
+    return basis @ coef
+
+
+def particle_mask(resid: np.ndarray) -> np.ndarray:
+    """Pixels whose 3 px smoothing is more than 3 noise sd (MAD) dark, dilated."""
+    smooth = gaussian_filter(resid, DETECT_SIGMA)
+    sd = MAD_TO_SD * np.median(np.abs(smooth - np.median(smooth)))
+    return binary_dilation(smooth < np.median(smooth) - DETECT_SD * sd, iterations=MASK_DILATION)
+
+
 def background(reference: np.ndarray) -> np.ndarray:
-    """Per-snippet background from the last context frame: a 41 px median (particles
-    cover < 10 % of the crop, so the median ignores them) smoothed at 10 px. It is
-    fixed before the forecast, so blurring a forecast cannot change it."""
-    smooth = median_filter(reference.astype(np.float64), size=MEDIAN_PX, mode="reflect")
-    return gaussian_filter(smooth, BACKGROUND_SIGMA)
+    """Mean-based background of the last context frame, particle pixels left out: a
+    quadratic surface plus the smoothed remainder (normalised convolution). A median
+    would sit below the mean under skewed low-dose shot noise (P0b v1). The mask comes
+    from the reference only, so blurring a forecast cannot change ``B``."""
+    ref = reference.astype(np.float64)
+    keep = ~particle_mask(ref - quadratic_fit(ref, np.ones(ref.shape, bool)))
+    surface = quadratic_fit(ref, keep)
+    w = keep.astype(np.float64)
+    rest = gaussian_filter((ref - surface) * w, BACKGROUND_SIGMA)
+    return surface + rest / np.maximum(gaussian_filter(w, BACKGROUND_SIGMA), EPS)
 
 
 def dark_mass(frame: np.ndarray, bg: np.ndarray, *, log: bool = False) -> float:
@@ -87,7 +112,7 @@ def variants(future: np.ndarray, last: np.ndarray) -> dict:
 
 
 def clip_rows(path: Path) -> list[dict]:
-    """Per window: exponent of each variant, linear and log."""
+    """Per window: the dark-mass exponent of each variant."""
     z = np.load(path)
     frames, size = z["frames"], z["frames"].shape[-1]
     c = (size - CROP) // 2
@@ -98,9 +123,7 @@ def clip_rows(path: Path) -> list[dict]:
         row = {"clip": path.stem, "process": str(z["process"])}
         bg = background(win[CTX_FRAMES - 1])
         for name, f in variants(win[CTX_FRAMES:], win[CTX_FRAMES - 1]).items():
-            for log in (False, True):
-                key = f"{'log' if log else 'linear'}/{name}"
-                row[key] = radius_exponent(times, latent_masses(f, bg, log=log))
+            row[f"linear/{name}"] = radius_exponent(times, latent_masses(f, bg))
         rows.append(row)
     return rows
 
@@ -118,7 +141,7 @@ def medians(rows: list[dict], key: str) -> dict:
 
 
 def judge(table: dict, truth: dict) -> dict:
-    """The three P0b criteria for one form (linear or log)."""
+    """The three P0b criteria."""
     true_ok = all(
         abs(table["true"][p]["median"] - truth[p]) <= TRUTH_TOL for p in JUDGED
     )
@@ -139,14 +162,11 @@ def judge(table: dict, truth: dict) -> dict:
 
 def analyse(rows: list[dict], truth: dict) -> dict:
     out = {}
-    for form in ("linear", "log"):
+    for form in ("linear",):
         names = ["true", "held", *(f"blur_{s}" for s in SIGMAS)]
         table = {n: medians(rows, f"{form}/{n}") for n in names}
         out[form] = {"exponents": table, "criteria": judge(table, truth)}
-    out["reading"] = next(
-        (f for f in ("linear", "log") if out[f]["criteria"]["pass"]),
-        "radius_at_true_centres",
-    )
+    out["reading"] = "dark_mass" if out["linear"]["criteria"]["pass"] else "radius_at_true_centres"
     return out
 
 
@@ -161,10 +181,10 @@ def main() -> None:
     rows = [row for path in clips for row in clip_rows(path)]
     truth = {"diffusion": 1 / 3, "reaction": 1 / 2}
     result = {"n_windows": len(rows)} | analyse(rows, truth)
-    (args.out / "premise-dark-mass.json").write_text(json.dumps(result, indent=1))
+    (args.out / "premise-dark-mass-v2.json").write_text(json.dumps(result, indent=1))
     LOG.info(
         json.dumps(
-            {f: result[f]["criteria"] for f in ("linear", "log")}
+            {"linear": result["linear"]["criteria"]}
             | {"reading": result["reading"]}
         )
     )
