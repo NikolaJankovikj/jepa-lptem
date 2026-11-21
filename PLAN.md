@@ -545,11 +545,34 @@ class LatentForecaster(nn.Module):
 
 ## Step 11 — Pixel-space baseline (ConvLSTM)
 
-**Where:** remote (~1 day on one GPU; can run concurrently with Step 10 coding).
+**Fixed 2026-11-21, before any number exists.** Replaces the three-line outline written at the start (in git history), which read the forecast frames with SAM-EM segmentations and compared against token-level Gate 2. Gate 2 has since failed for a structural reason and the thesis's positive result is the position-free forecaster (Gate 2′, `experiments/pooled-forecast/`, `longer-context/`), so the baseline is now judged on both paths, with the same readouts, snippets and statistics. **Files:** `src/jepa_lptem/models/convlstm.py`, `tests/test_convlstm.py`, `scripts/train_convlstm.py` (PC), `scripts/pixel_forecast_eval.py` (Mac), `experiments/pixel-baseline/`.
 
-- [ ] Train an off-the-shelf ConvLSTM/PredRNN next-frame predictor on the same clips at 256².
-- [ ] Extract observables from its predicted frames via SAM-EM-checkpoint segmentations; add the column to the Gate-2 headline table.
-- [ ] Commit + extend `experiments/core/README.md`.
+- **Question.** The brief's central claim (H1) is that latent prediction beats pixel prediction on physics in low-SNR video. Does a pixel-space forecaster trained on the same clips, with no labels, carry growth as well as the label-free linear forecaster on the frame-averaged V-JEPA latent, and does it erase particles as the token forecaster does?
+- **Model.** A ConvLSTM next-frame predictor, written here (~60 lines of PyTorch, no new dependency). Conv encoder 256² → 64² (two stride-2 blocks, 64 channels), 2 ConvLSTM layers (64 hidden, 3×3), conv decoder back to 256², sigmoid output on frames scaled to [0, 1]. The output is the last input frame plus a learned update whose head starts at zero, so the untrained model is persistence, as for `LatentForecaster`. ~1–3 M parameters.
+- **Data and training.** The tubelet memory map (`data/tubelets/dynamics-v1`, Step 15 M1): same 256² centre crop, `split_by_clip` seed 0, train clips only. Context 16 frames (= 8 latent frames), then a 48-frame rollout (+24 latent steps) on its own outputs. Loss: MSE per pixel, the ConvLSTM/PredRNN standard and what Fu et al. used. Teacher forcing for the first half of training, then full rollout (scheduled sampling, linear ramp). AdamW 1e-3, cosine, bf16, batch as fits one 3090; 30 epochs. Checkpoint chosen on **val pixel MSE over the 48-frame rollout** (no labels anywhere, as for candidate A).
+- **Evaluation.** Test snippets identical to `pooled-forecast/` (context = latent frames 0–7, forecast = 8–31) and to `longer-context/` design A for context 16. Forecast frames are encoded **per frame** by the frozen V-JEPA 2 (`extract_features.make_encoder(per_frame=True)`), then read two ways:
+  - **Pooled path (the judged one):** frame mean → the frozen ridge readout (`pooled-gate1/readout.npz`) → `pooled_forecast.evaluate` unchanged: mean-radius MAE at +1/+5/+10/+24, paired gain over the reference at +24, median exponents over +1..+24 on diffusion / reaction / static.
+  - **Token path (reported):** the Gate-1 probes (`gate1-perframe/probes.pt`) → detection F1 against persistence and peak occupancy at +1/+5/+10, next to `core-perframe/`'s fade numbers.
+  - **Pixel path (reported):** the encoder-free apparent radius (`compare_to_real.apparent_radius_px`) on forecast vs true frames, so a conclusion does not rest on V-JEPA reading frames it was not trained on.
+- **Verdict (pre-registered).**
+  - *Latent beats pixel* iff, at context 8, the paired gain of candidate A over the ConvLSTM in +24 mean-radius MAE has a 95 % clip-bootstrap CI above 0 on both diffusion and reaction. *Pixel beats latent* iff the CI is below 0 on both. Otherwise *tied*, with the CIs reported.
+  - Gate 2′ is applied to the ConvLSTM exactly as to A and B (size, exponent, static criteria), so it gets a row in the same table.
+  - Context 16 is reported the same way, not judged.
+- **P0 — premise check (Mac, before any training).** On 50 fresh physics-stratum clips from the current generator, encoded per frame on MPS:
+  1. *Persistence reproduces.* Holding the last true context frame and running it through the pixel → encoder → readout path must give the persistence row of `pooled-forecast/` within its CI. If not, the path is wrong; stop and fix.
+  2. *What blur reads as.* An MSE forecaster's failure mode is blur. Gaussian-blur the true future frames (σ = 1, 2, 4, 8 px) and read them through all three paths. This fixes, before training, whether the readout reads a blurred particle as smaller, fewer, or unchanged, so a ConvLSTM result can be told apart from a readout artefact. Stop rule: if blur at σ = 2 moves the pooled mean-radius reading by more than the linear candidate's +24 gain (0.42 px diffusion), the pooled path cannot separate a sharp forecast from a blurred one; then the pixel path becomes the judged one and the verdict above is re-stated on it before P2.
+- **Predictions (written before P0).**
+  1. P0.1 passes; P0.2: blur leaves total area roughly unchanged (MSE blur conserves the dark mass) and biases mean radius up at σ ≥ 4.
+  2. The ConvLSTM fades: detection F1 at +5 below persistence, peak occupancy below 0.6 by +10, like the token forecaster.
+  3. It carries some growth: gain over the reference at +24 above 0 on reaction, but **latent beats pixel** on both processes (A minus ConvLSTM CI above 0).
+  4. Its exponents are below A's (0.208 / 0.269) and its static exponent is within ±0.1 of 0. Gate 2′ FAIL on the exponent criterion, as for A and B.
+  5. At +1 its mean-radius MAE is within 0.1 px of persistence.
+- **Steps.**
+  - [ ] P0 (Mac): premise check above → `experiments/pixel-baseline/premise.json`.
+  - [ ] P1 (Mac): `convlstm.py` + tests: shapes; the untrained model returns the last frame exactly; causality (perturbing a later context frame never changes an earlier prediction); it learns a toy set of a dark disk growing at a constant rate and beats persistence 5× at +8. Smoke-train on `smoke_v3` tubelets, loss falls, rollout runs.
+  - [ ] P2 (PC): train (one 3090, expected 4–8 h); forecast the test snippets at contexts 8 and 16; encode forecasts per frame and save the pooled means and token latents for the forecast frames only (~316 windows × 24 latent frames per context). Runbook as Step 15 (GPU 1, tmux, `python -u`, `tee`); `*.pt` stays out of git.
+  - [ ] P3 (Mac): `pixel_forecast_eval.py` → `experiments/pixel-baseline/README.md` + `metrics.json`; predictions marked right / wrong; a ConvLSTM row in the thesis's Table 3 and Figure 4, and the limitation in §7.6 replaced by the result.
+- **Budget.** ~1 week: P0–P1 2–3 days on the Mac, P2 1 GPU day, P3 1–2 days.
 
 ## Step 12 — Event anticipation (RQ2)
 
