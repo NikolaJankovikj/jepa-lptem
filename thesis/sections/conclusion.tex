@@ -1,2 +1,31 @@
 \section{Conclusion}
-TODO
+\label{sec:conclusion}
+
+This thesis asked whether a self-supervised video model, never shown a microscope image,
+learns the physics of nanoparticles in liquid-phase TEM video well enough to forecast it.
+We built a simulator with an exact answer key, read physical observables off the latents
+of a frozen V-JEPA~2 encoder and of forecasts made in its latent space, and judged every
+result against criteria and predictions fixed before the result was computed.
+
+The frozen encoder reads the present: particle size, total area and diffusion from a
+single two-frame tubelet, at $R^2 \approx 0.9$ and at the MSD of a perfect detector,
+although count stays below the bar. Forecasting is harder. Deterministic token-level
+forecasts cannot decode to correct physics on this instrument, because half the
+particles leave their token in one step and the optimal single guess erases them. A
+position-free state, the frame average of the tokens, can be forecast without labels: a
+linear forecaster on it carries each clip's growth beyond every trend-blind baseline, and
+the remaining error in its growth exponents is what the noisy context allows. Forecast
+quality falls strongly with horizon and mildly with dose. Prediction error detects
+particle merges as they happen but does not anticipate them, and simple baselines detect
+them as well. Adapting the encoder with LoRA reads the present markedly better than
+freezing it, most of all when labels are few, without changing these conclusions. None of
+it transfers to published real LPTEM movies with a frozen encoder, so the results are
+those of a simulation study.
+
+The answer to the title question is therefore a qualified one. The model learns what is
+predictable, growth, and not what is not, where each particle goes; and which is which is
+set by the physics of the instrument rather than by the model. Along the way we found
+three pitfalls that apply beyond this thesis: video encoders with temporal attention leak
+the future into a latent forecaster's context; criteria should be set only after
+measuring the floor or ceiling they imply; and published microscopy movies need to be
+screened before they are used as data.

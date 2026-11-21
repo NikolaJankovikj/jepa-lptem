@@ -1,9 +1,131 @@
 \section{Discussion}
-% Why token forecasts collapse; damping is an information limit; look-ahead warning;
-% sim-to-real; limitations (thickness half of RQ3, ConvLSTM baseline not run).
-TODO
+\label{sec:discussion}
+
+% Citations marked [?] (keys starting with todo-) are papers read only as abstracts so
+% far; verify each before the Related Work pass replaces the key.
+
+\subsection{Why Token-Level Latent Forecasts Collapse}
+
+The token-level forecaster converged and beats both baselines in feature space (by 26\,\%
+over persistence and 4\,\% over the context mean at $+1$), yet read through the probes it
+falls below persistence within five steps. The two facts are consistent. In feature space
+much of the L1 error is noise, and averaging the context alone removes most of it; the
+context mean is close to what the loss rewards and is exactly the kind of latent the probes
+cannot read (detection F1 0.25--0.33 at $+1$, against 0.58 for persistence). A lower
+feature-space loss bought blur.
+
+Token persistence (Table~\ref{tab:token-persistence}) gives the mechanism in numbers.
+Half the particles leave their token in one step, so for most tokens the future is a
+coin flip between particle and background, and the L1-optimal deterministic forecast is
+background. This is the conditional-mean collapse that recent work on stochastic JEPA
+world models describes~\cite{todo-mopjepa,todo-varjepa}: when the future branches, a
+deterministic predictor outputs an average that corresponds to no state at all. Our
+contribution is to show it on a scientific instrument, measure it, and connect it to a
+physical quantity, the displacement of a Brownian particle over one latent step.
+
+Why do V-JEPA~2-AC~\cite{assran2025vjepa2} and DINO-WM~\cite{todo-dinowm} not run into
+this? Their environments are close to deterministic, because actions drive the change,
+and they never decode their forecasts: they rank candidate actions by latent distance to
+a goal, where a blurred forecast is harmless. We copied their recipe (per-frame encoding,
+L1, a short rollout) into a stochastic setting and then decoded the forecasts. The same
+gap, between a latent that is \emph{decodable} and one that is \emph{forecastable}, has
+since been reported for robotic control~\cite{todo-jepax}.
+
+\subsection{What a Forecastable State Looks Like}
+
+Averaging the tokens of a frame throws away exactly what cannot be forecast, where the
+particles are, and keeps what can, how large they are. In the terms of
+LeCun~\cite{todo-lecun2022}, this is the first of the two ways a JEPA can handle
+uncertainty: a representation that is invariant to the unpredictable. The caveat is that
+we chose that invariance by hand rather than learning it. A ground-truth check makes the
+choice less arbitrary than it looks: the fraction of particles that stay in a patch of
+the image grows with the patch size, and only a patch the size of the whole crop holds
+several particles at the density of our clips. At this density the frame mean is the
+smallest region whose content is predictable. This agrees with the coarse-graining rule
+of the closest LPTEM forecasting work~\cite{todo-li2026}, which sizes its patches so that
+each holds enough particles to define a field.
+
+The remaining error in the growth forecasts is not the model's. Its exponent tracks the
+ceiling of what the context reveals as the context grows, and neither a transformer nor
+a mixture of predictors gets closer. The exponent bar was unreachable from eight noisy
+frames by any forecaster. More context frames, or a less noisy reading of each, is the
+only way to more accurate growth laws; within our dose range, more frames help more than
+brighter ones (Section~\ref{sec:res-rq3}).
+
+\subsection{What a Forecaster's Surprise Is Worth}
+
+A natural hope for a latent world model is that its prediction error flags events. On
+merges it does, but not a privileged one: a context average and a pixel brightness
+change detect merges as well, and none of them anticipates a merge beyond the trivial cue
+that two particles are already close. A deterministic forecaster facing random encounters
+should behave exactly so: the merge is a surprise for one frame, after which the
+forecaster has seen the merged particle and predicts it. Anticipating an encounter would
+need the forecaster to represent where particles are going, which is what the
+token-level analysis shows is not predictable.
+
+\subsection{Simulation and Real Video}
+
+Every positive result in this thesis holds in simulation only. No published real movie
+falls inside the simulated feature distribution, and the forecaster fails on real input
+from the first step. The simulator's appearance range, checked on image statistics, did
+not cover real video once the comparison was made in the encoder's feature space with
+the pipeline's actual preprocessing. An earlier check had found containment, but it was
+made with the image processor's resize, which the pipeline later dropped, and was not
+repeated. A premise has to be re-measured whenever the pipeline under it changes.
+
+A second lesson concerns the data. Of 132 published supplementary movies, 122 had been
+rescaled for display, so that their noise is correlated over several pixels and one pixel
+is no longer one detector pixel. Such movies look like data but break the premises of any
+method that reads noise or particle size in pixels. A test of the correlation of frame
+differences at a lag of one or two pixels screens them out in seconds.
+
+\subsection{Frozen Versus Adapted Encoders}
+
+The frozen V-JEPA~2 encoder was the weakest of the three readers we compared, beaten
+even by a small CNN trained from scratch. The information is in its features, since LoRA
+starts from exactly those features, but not in a form a light probe reads well. Low-rank
+adaptation recovers it, and is most valuable with few labels: with 10\,\% of the training
+clips it matches the frozen encoder trained on all of them. When labelled clips are scarce, adapting a pretrained video encoder is therefore the better
+choice than either freezing it or training a small network from scratch. The better
+reading did not, by our pre-registered rule, change the growth-forecast conclusions.
+
 \subsection{Limitations}
-TODO
+\label{sec:limitations}
+
+\begin{itemize}
+  \item \emph{Simulation only.} All positive results are on synthetic video, and they
+    do not transfer to published real movies.
+  \item \emph{Thickness.} The mean liquid thickness is fixed at 150\,nm, so the
+    thickness half of RQ3 is not answered.
+  \item \emph{Three criteria could not be passed by construction.} Gate~2's size rule
+    (even the true future beats persistence by only 3--6\,\%), Gate~2$'$'s exponent bar
+    (Section~\ref{sec:res-rq1}) and the first pixel baseline for RQ2, which could not
+    tell particles from background (AUC 0.513). Each is reported as a protocol error;
+    since then every criterion was preceded by a ground-truth check of its floor or
+    ceiling.
+  \item \emph{No pixel-space forecasting baseline.} A ConvLSTM-style video predictor was
+    planned and not trained; the comparison with pixel-space prediction rests on the
+    pixel-change baselines of RQ2.
+  \item \emph{One seed.} Each model was trained once; the intervals cover the sampling of
+    test clips, not training randomness.
+  \item \emph{Different training protocols in the encoder comparison.} The frozen
+    encoder's probes train for a fixed schedule, while the adapted encoder and the CNN
+    keep their best validation checkpoint.
+\end{itemize}
+
 \subsection{Future Work}
-TODO
-% Sim-to-real: wider appearance randomisation, LoRA on real video; stochastic predictors.
+\label{sec:future}
+
+\begin{itemize}
+  \item \emph{Closing the sim-to-real gap}: wider randomisation of the simulator's
+    appearance, guided by the feature-space containment check, or self-supervised LoRA
+    adaptation on real video.
+  \item \emph{Stochastic forecasters for positions}: object-centric stochastic latent
+    dynamics~\cite{todo-lpwm} or forecasters that output a distribution, judged with a
+    proper distributional score, instead of a single latent.
+  \item \emph{Learning the invariance}: training the encoder or a projection so that its
+    state is forecastable, rather than choosing the frame mean by hand.
+  \item \emph{Thickness and denser assemblies}: clips that vary the liquid thickness, and
+    the dense assemblies where local fields, not only the frame mean, become
+    predictable.
+\end{itemize}
