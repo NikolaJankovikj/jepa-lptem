@@ -30,6 +30,28 @@ L1, a short rollout) into a stochastic setting and then decoded the forecasts. T
 gap, between a latent that is \emph{decodable} and one that is \emph{forecastable}, has
 since been reported for robotic control~\cite{jepax}.
 
+The pixel-space ConvLSTM (Section~\ref{sec:res-rq1}) shows that the collapse is not a
+property of the latent space. Forecasting pixels with a squared error, it erases the
+particles within a few frames, the same way and for the same reason: a central value of
+the possible futures of a randomly moving particle is no particle. The latent space did
+not cause the failure, and it did not prevent it either. What separates the two
+approaches here is not where the forecast is made but what is forecast. In pixels, the
+position-free part of the state is not available as a separate quantity, so the
+forecaster pays for the unpredictable positions with the particles themselves; the
+frame-averaged latent separates the two, and its forecast keeps growth specific to the
+processes that grow. This is a narrower claim than the usual one for latent
+prediction~\cite{lecun2022path, assran2025vjepa2}, that it saves the capacity a pixel
+model spends on noise. Our ConvLSTM did spend its capacity on noise: half of its
+advantage over persistence is the noise it no longer reproduces, from the first frame
+on. But that did not stop it from losing the particles.
+
+A second finding is about evaluation. A frozen video encoder cannot be used as a neutral
+instrument for reading another model's frames: V-JEPA~2 reads a 1\,px blur of the true
+frames as particles 5.7\,px smaller, because its readings depend on the noise texture.
+Comparisons between pixel and latent forecasters that read both through one encoder,
+or that score pixel forecasts with features of a pretrained network, deserve a check of
+this kind first.
+
 \subsection{What a Forecastable State Looks Like}
 
 Averaging the tokens of a frame throws away exactly what cannot be forecast, where the
@@ -102,9 +124,11 @@ reading did not, by our pre-registered rule, change the growth-forecast conclusi
     tell particles from background (AUC 0.513). Each is reported as a protocol error;
     since then every criterion was preceded by a ground-truth check of its floor or
     ceiling.
-  \item \emph{No pixel-space forecasting baseline.} A ConvLSTM-style video predictor was
-    planned and not trained; the comparison with pixel-space prediction rests on the
-    pixel-change baselines of RQ2.
+  \item \emph{One pixel baseline, read by a different instrument.} The pixel-space
+    comparison rests on a single deterministic ConvLSTM, read by a pixel estimate of
+    radius while forecaster A is read by its latent readout; no single instrument could
+    read both fairly. A stochastic pixel model, such as a video diffusion model, which
+    samples one possible future instead of averaging them, was not tested.
   \item \emph{One seed.} Each model was trained once; the intervals cover the sampling of
     test clips, not training randomness.
   \item \emph{Different training protocols in the encoder comparison.} The frozen
@@ -121,7 +145,8 @@ reading did not, by our pre-registered rule, change the growth-forecast conclusi
     adaptation on real video.
   \item \emph{Stochastic forecasters for positions}: object-centric stochastic latent
     dynamics~\cite{lpwm} or forecasters that output a distribution, judged with a
-    proper distributional score, instead of a single latent.
+    proper distributional score, instead of a single latent; and the same comparison in
+    pixel space, against a stochastic video model.
   \item \emph{Learning the invariance}: training the encoder or a projection so that its
     state is forecastable, rather than choosing the frame mean by hand.
   \item \emph{Thickness and denser assemblies}: clips that vary the liquid thickness, and

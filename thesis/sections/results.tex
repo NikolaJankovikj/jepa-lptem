@@ -152,10 +152,70 @@ Three ground-truth checks locate the exponent shortfall.
     falls to 0.191 / 0.120, below the averaged ridge.
 \end{enumerate}
 
+\paragraph{A pixel-space forecaster erases the particles.}
+The ConvLSTM (Section~\ref{sec:method-pixel}) trains without trouble: its validation
+squared error over the 48-frame rollout is half that of persistence (0.0089 against
+0.0177), and on the test clips it stays at half from the first forecast frame to the last
+(0.0073 against 0.0144 at $+1$, 0.0075 against 0.0148 at $+48$). Table~\ref{tab:pixel}
+gives the pre-registered comparison with forecaster A on the 316 test snippets.
+
+\begin{table}[h]
+  \centering
+  \caption{Pixel against latent forecasting, context 8 (test, physics stratum). Median
+    growth exponents over the forecast; the verdict row is the median per-snippet
+    difference in exponent error, ConvLSTM minus A (positive: A is closer to the truth).
+    Darkness is reported, not judged.}
+  \label{tab:pixel}
+  \small\setlength{\tabcolsep}{5pt}
+  \begin{tabular}{lccc}
+    \toprule
+    & diffusion & reaction & static \\
+    \midrule
+    true & 0.333 & 0.500 & 0 \\
+    A: linear ridge, latent readout & 0.208 & 0.269 & 0.008 \\
+    ConvLSTM, pixel radius (judged) & 0.467 & 0.806 & 0.566 \\
+    true frames, pixel radius & 0.393 & 0.508 & $-0.012$ \\
+    ConvLSTM, frame darkness & 0.191 & 0.279 & 0.082 \\
+    \midrule
+    error difference, ConvLSTM $-$ A & $+0.25$ $[+0.12, +0.55]$ & $+0.66$ $[+0.40, +1.39]$ & -- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Latent beats pixel on both processes, as predicted, but not in the predicted way. We
+expected the ConvLSTM to carry too little growth; its exponents are too \emph{large},
+and as large on static clips, where nothing grows, as on growing ones. The reason is
+visible in its frames (Figure~\ref{fig:pixel-erase}). Within the first eight forecast
+frames the particles lose most of their contrast at their true centres (a depth of 1.5--7.7
+grey levels, against 16--24 in the true frames), and by $+48$ they are gone (0.0--0.4).
+The pixel radius of an almost flat profile is meaningless, and it drifts outward at the
+same rate on every process. The squared-error forecaster has found the pixel version of
+the token forecaster's solution above: when a particle may have
+moved anywhere within a few pixels, the frame that minimises the expected error is the
+background with the particles averaged away. The total darkness of the frames, which
+does not depend on where the particles are, still rises with exponents close to A's
+(0.191 / 0.279), but it rises on static, ripening and coalescence clips too (0.08--0.17,
+against A's 0.01--0.04), so whatever growth survives in the faded frames is not specific
+to the processes that grow. Read through V-JEPA~2 instead, the ConvLSTM fails every
+criterion of Gate~2$'$, but given the premise check, that number describes the readout's
+response to smooth frames more than the forecast.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig_pixel_erase}
+  \caption{The ConvLSTM erases particles. Left: a static test clip (top-left quarter of
+    the crop) and the ConvLSTM's forecast of it from 16 context frames. Right: median
+    depth of the particles at their true centres, per block of 8 forecast frames, in the
+    true frames (dashed) and the ConvLSTM's forecasts (solid); post hoc.}
+  \label{fig:pixel-erase}
+\end{figure}
+
 \noindent\textbf{Answer to RQ1: partly.} Deterministic token-level forecasts cannot decode
 to correct physics on this instrument. A label-free linear map on the frame-averaged
 V-JEPA~2 latent does forecast growth, and its remaining exponent error is what 8--16
-noisy frames allow.
+noisy frames allow. A pixel-space forecaster trained on the same clips erases the
+particles within a few frames and forecasts growth no better than it forecasts it on
+static clips.
 
 \subsection{RQ3: Horizon and Signal-to-Noise Ratio}
 \label{sec:res-rq3}
@@ -348,8 +408,9 @@ Table~\ref{tab:summary} collects the answers. Read together, the results separat
 frozen video model can and cannot do on this instrument. It reads the present well, size
 and diffusion close to their ceilings, and an adapted encoder reads it better still. What
 it cannot do is forecast where particles go: the motion is random at the scale of a token,
-so a deterministic forecast of the tokens erases the particles, and its prediction error
-marks merges only once they have happened. What it can forecast is the position-free part
+so a deterministic forecast of the tokens erases the particles (and so does a
+squared-error forecast of the pixels), and the token forecaster's prediction error marks
+merges only once they have happened. What it can forecast is the position-free part
 of the state, the growth of the particle population, up to the limit set by how noisy and
 how short the context is; and how much that limit costs depends more on the number of
 context frames than on the electron dose. All of it holds in simulation and none of it on
@@ -366,7 +427,9 @@ the real movies we could obtain.
     RQ1: do predicted latents decode to correct future physics?
       & Partly. Token-level forecasts erase particles for a structural reason. A
         label-free linear forecaster on the frame-averaged latent carries growth; its
-        exponents are damped by the information limit of the noisy context. \\ \addlinespace
+        exponents are damped by the information limit of the noisy context. A
+        pixel-space ConvLSTM does worse: it erases the particles and its exponents are
+        as large on static clips as on growing ones. \\ \addlinespace
     RQ2: does prediction error anticipate coalescence?
       & It detects merges (AUC 0.71) but does not anticipate them, and simple baselines
         detect them as well. \\ \addlinespace

@@ -153,6 +153,42 @@ reference has an interval above 0; (2) its median growth exponent over $+1$ to $
 within $\pm 0.1$ of the true one on both growing processes; and (3) its median exponent on
 static clips is within $\pm 0.1$ of 0, so that it does not invent growth.
 
+\subsection{A Pixel-Space Baseline}
+\label{sec:method-pixel}
+
+To test whether forecasting in a latent space helps at all, we train a forecaster that
+predicts pixels from the same clips, also without labels. It is a ConvLSTM next-frame
+predictor~\cite{shi2015convlstm}: two stride-2 convolutions take the $256^2$ crop to
+$64^2$ with 64 channels, two ConvLSTM layers of 64 channels ($3 \times 3$) carry the
+state, and two transposed convolutions return to $256^2$. Its output is the last input
+frame plus a learned update whose final layer starts at zero, so that, like the latent
+forecasters, the untrained model is persistence. It reads 16 context frames (the 8 latent
+frames of forecasters A and B) and rolls out 48 frames ($+1$ to $+24$ latent steps) on its
+own outputs, trained with the per-pixel squared error that ConvLSTM-type
+predictors~\cite{shi2015convlstm} and the LPTEM forecaster of Fu et
+al.~\cite{fu2022insitu} use. Teacher forcing falls linearly from 1 to 0 over the first
+half of 30 epochs (scheduled sampling), with AdamW at $10^{-3}$ and a cosine schedule, and
+the checkpoint is chosen on the validation squared error of the full rollout.
+
+\paragraph{Reading a pixel forecast.} The natural plan, reading the forecast frames
+through V-JEPA~2 and the same readout as forecaster A, fails a premise check made before
+training: a Gaussian blur of the true future frames by only 1\,px shifts the readout's
+mean radius by $-5.7$\,px, and a held frame reads 2\,px away from its own latent. The
+encoder's readings depend on the shot-noise texture, so it cannot fairly read the smooth
+frames a squared-error forecaster produces. The comparison is therefore made on the
+growth exponent, which is scale-free and has the same true value for both models, each
+read by an instrument native to it: forecaster A by its readout, the ConvLSTM by a pixel
+estimate of particle radius: the distance at which the mean radial intensity profile
+around the true particle centres reaches half its depth, over blocks of 8 frames. On the true future frames this pixel reading recovers exponents of 0.39 / 0.51
+against the true $1/3$ / $1/2$. A position-free alternative, the total darkness of a
+frame relative to its background, which a blur cannot change, failed its own premise
+check by 0.024 on reaction clips and is reported only.
+
+\paragraph{Verdict.} For each test snippet, the exponent error $|\alpha - \alpha_{\text{true}}|$
+of the ConvLSTM minus that of forecaster A, on diffusion and reaction clips. Latent beats
+pixel if the median difference has an interval above 0 on both processes, pixel beats
+latent if below 0 on both, and the two are tied otherwise.
+
 \subsection{Adapting the Encoder}
 \label{sec:method-encoder}
 

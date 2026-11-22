@@ -215,6 +215,47 @@ def fig_data_efficiency() -> None:
     fig.savefig(OUT / "fig_data_efficiency.pdf")
 
 
+def pixel_example(proc: str) -> tuple[np.ndarray, np.ndarray]:
+    """True and ConvLSTM forecast frames (48, 256, 256) of the first test clip of
+    ``proc``, snippet starting at frame 0 (data/ and experiments/, not in git)."""
+    forecasts = np.load(EXP / "pixel-baseline/forecasts.npz")
+    clips = sorted({k.rsplit("/", 1)[0] for k in forecasts.files})
+    clip = next(c for c in clips if c.endswith(f"_{proc}_physics"))
+    true = np.load(ROOT / "data/tubelets/dynamics-v1/test_frames.npy", mmap_mode="r")
+    return np.asarray(true[clips.index(clip), 16:64]), forecasts[f"{clip}/ctx8"][0]
+
+
+def fig_pixel_erase() -> None:
+    """The ConvLSTM erases particles: example frames of a static clip, and the particles'
+    depth at their true centres per 8-frame block (post hoc)."""
+    blocks = load("pixel-baseline/metrics.json")["depth_by_block_ctx8_posthoc"]
+    true, conv = pixel_example("static")
+    fig = plt.figure(figsize=(7.0, 3.0), layout="constrained")
+    left, right = fig.subfigures(1, 2, width_ratios=[1.25, 1])
+    axes = left.subplots(2, 3)
+    for col, f in enumerate((0, 23, 47)):
+        for row, (frames, name) in enumerate(((true, "true"), (conv, "ConvLSTM"))):
+            ax = axes[row, col]
+            ax.imshow(frames[f, :128, :128], cmap="gray", vmin=true.min(), vmax=true.max())
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if col == 0:
+                ax.set_ylabel(name, fontsize=8)
+        axes[0, col].set_title(f"forecast frame +{f + 1}", fontsize=8, color=INK)
+    ax = right.subplots()
+    mid = 8 * np.arange(6) + 4.5
+    for i, proc in enumerate(("static", "diffusion", "reaction")):
+        ax.plot(mid, blocks[proc]["true"], color=SERIES[i], linestyle="--", linewidth=1.5)
+        line(ax, (mid, blocks[proc]["convlstm"]), i, proc)
+    ax.plot([], [], color=MUTED, linestyle="--", label="true frames")
+    ax.set_xlabel("forecast frame")
+    ax.set_ylabel("particle depth (grey levels)")
+    ax.set_ylim(bottom=0)
+    style(ax)
+    ax.legend(frameon=False, fontsize=7, loc="center right")
+    fig.savefig(OUT / "fig_pixel_erase.pdf")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clips", type=Path, required=True)
@@ -223,7 +264,7 @@ def main() -> None:
                          "axes.labelcolor": INK})
     fig_simulator(args.clips)
     for make in (fig_lookahead, fig_persistence, fig_pooled_forecast, fig_dose, fig_merges,
-                 fig_containment, fig_data_efficiency):
+                 fig_containment, fig_data_efficiency, fig_pixel_erase):
         make()
 
 

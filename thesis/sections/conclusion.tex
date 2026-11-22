@@ -14,7 +14,10 @@ forecasts cannot decode to correct physics on this instrument, because half the
 particles leave their token in one step and the optimal single guess erases them. A
 position-free state, the frame average of the tokens, can be forecast without labels: a
 linear forecaster on it carries each clip's growth beyond every trend-blind baseline, and
-the remaining error in its growth exponents is what the noisy context allows. Forecast
+the remaining error in its growth exponents is what the noisy context allows. A
+pixel-space forecaster trained on the same clips erases the particles, as the token-level
+forecaster does, so forecasting in a latent space helped here only through the
+position-free state it made available. Forecast
 quality falls strongly with horizon and mildly with dose. Prediction error detects
 particle merges as they happen but does not anticipate them, and simple baselines detect
 them as well. Adapting the encoder with LoRA reads the present markedly better than

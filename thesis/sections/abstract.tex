@@ -17,7 +17,8 @@ correct physics: half the particles leave their token in a single step, so the o
 single guess erases them. A position-free state, the frame average of the tokens, can be
 forecast without labels; a linear forecaster on it carries each clip's growth beyond every
 trend-blind baseline, and its remaining exponent error is what eight to sixteen noisy
-frames allow. Forecast quality degrades strongly with horizon and mildly with electron
+frames allow. A pixel-space forecaster trained on the same clips erases the particles
+instead, and the growth read off its frames is as large on static clips as on growing ones. Forecast quality degrades strongly with horizon and mildly with electron
 dose. Prediction error detects particle merges as they happen but does not anticipate
 them, and simple baselines detect them as well. None of these results transfers to
 published real LPTEM movies, which lie outside the simulated feature distribution. The

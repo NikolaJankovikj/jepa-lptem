@@ -56,7 +56,8 @@ physics or one that did not, is a result.
     half the particles leave their token in one latent step (Section~\ref{sec:res-rq1}).
   \item A position-free forecaster that carries each clip's growth without labels,
     with its remaining exponent error traced to the information limit of the noisy
-    context (Section~\ref{sec:res-rq1}).
+    context, and a comparison with a pixel-space ConvLSTM, which fails the same way as
+    the token-level forecaster (Section~\ref{sec:res-rq1}).
   \item Answers to RQ2 and RQ3: prediction error detects merges but does not anticipate
     them, and forecast quality degrades strongly with horizon and mildly with dose
     (Sections~\ref{sec:res-rq2} and~\ref{sec:res-rq3}).
