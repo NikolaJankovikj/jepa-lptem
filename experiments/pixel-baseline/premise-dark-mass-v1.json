@@ -1,0 +1,468 @@
+{
+ "n_windows": 100,
+ "linear": {
+  "exponents": {
+   "true": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.6984679540026877,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "held": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": -7.325847612276295e-16,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_1": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.6984679305596961,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_2": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.698467939258556,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_4": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.6984679381303003,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_8": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.698467949847526,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   }
+  },
+  "criteria": {
+   "truth": false,
+   "blur": false,
+   "held": false,
+   "pass": false
+  }
+ },
+ "log": {
+  "exponents": {
+   "true": {
+    "coalescence": {
+     "median": -0.000701672793613562,
+     "ci": [
+      -0.040931504167362805,
+      0.007289521396706813
+     ]
+    },
+    "diffusion": {
+     "median": 0.09756838065144598,
+     "ci": [
+      0.03961790485835493,
+      0.1677610177509625
+     ]
+    },
+    "reaction": {
+     "median": 0.17059063157062815,
+     "ci": [
+      0.07683335135489121,
+      0.21935826603636968
+     ]
+    },
+    "ripening": {
+     "median": 0.0033842362768892586,
+     "ci": [
+      0.0005035359404124654,
+      0.00696612247500026
+     ]
+    },
+    "static": {
+     "median": -0.006151838469328341,
+     "ci": [
+      -0.03850582368906103,
+      0.014207843588879932
+     ]
+    }
+   },
+   "held": {
+    "coalescence": {
+     "median": 5.616356036923384e-17,
+     "ci": [
+      -1.3380233228177161e-16,
+      1.6725291535221454e-16
+     ]
+    },
+    "diffusion": {
+     "median": -3.309360721178009e-16,
+     "ci": [
+      -3.626902412670014e-16,
+      -2.417934941780009e-16
+     ]
+    },
+    "reaction": {
+     "median": -2.068432604652484e-16,
+     "ci": [
+      -3.458104959353842e-16,
+      -1.152701653117947e-16
+     ]
+    },
+    "ripening": {
+     "median": 1.3380233228177161e-16,
+     "ci": [
+      2.808178018461692e-17,
+      4.0801356548662783e-16
+     ]
+    },
+    "static": {
+     "median": 2.808178018461692e-17,
+     "ci": [
+      -6.690116614088581e-17,
+      2.0070349842265746e-16
+     ]
+    }
+   },
+   "blur_1": {
+    "coalescence": {
+     "median": -0.18076337801443482,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": 0.7359229764303872,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 0.9064383871613528,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": -0.11523517151007566,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_2": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": 0.8500976241751537,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.081582909506147,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": -0.17254801214368035,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_4": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": 0.9807226923478501,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.1202608942060863,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": -0.3869878812481863,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   },
+   "blur_8": {
+    "coalescence": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "diffusion": {
+     "median": 1.3698609678264733,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "reaction": {
+     "median": 1.352600695850217,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "ripening": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    },
+    "static": {
+     "median": NaN,
+     "ci": [
+      NaN,
+      NaN
+     ]
+    }
+   }
+  },
+  "criteria": {
+   "truth": false,
+   "blur": false,
+   "held": true,
+   "pass": false
+  }
+ },
+ "reading": "radius_at_true_centres"
+}
