@@ -37,3 +37,11 @@ def test_growth_exponent_is_recovered_and_a_held_frame_reads_none():
     cols = pixel_columns({"true": frames, "conv": held}, gt, META, FIRST)
     assert abs(cols["pixel/true"] - 0.5) < 0.1
     assert abs(cols["pixel/convlstm"]) < 1e-9
+
+
+def test_an_erased_forecast_has_no_particle_depth():
+    frames, gt = growing_clip()
+    flat = np.full_like(frames, 200.0)
+    cols = pixel_columns({"true": frames, "conv": flat}, gt, META, FIRST)
+    assert cols["depth/true"].min() > 50  # disks are 120 grey levels dark
+    assert np.abs(cols["depth/convlstm"]).max() < 1e-9

@@ -24,11 +24,11 @@ V-JEPA latent?
 | diffusion | +0.249 | [+0.124, +0.546] | 52 |
 | reaction | +0.660 | [+0.399, +1.386] | 54 |
 
-### But the ConvLSTM's growth is blur, not physics
+### But the ConvLSTM's growth is an erased particle, not physics
 
 The ConvLSTM's exponent is too **high**, not too low, and it is as high on static
-clips, where nothing grows. The radius at the true centres, median per 8-frame block
-of the forecast (px):
+clips, where nothing grows. Two per-block readings at the true centres (8-frame blocks
+of the forecast, medians) show why. The radius (px):
 
 | | block 1 | 2 | 3 | 4 | 5 | 6 |
 |---|---|---|---|---|---|---|
@@ -39,10 +39,24 @@ of the forecast (px):
 | reaction, true | 7.0 | 8.0 | 8.0 | 9.0 | 10.0 | 10.0 |
 | reaction, ConvLSTM | 13.0 | 19.0 | 21.0 | 22.0 | 22.5 | 24.0 |
 
-The ConvLSTM spreads every particle to about twice its width within 16 frames, the
-same way in every process. The reading measures that spreading as growth. This is
-the failure P0 predicted for an MSE pixel forecaster (blur), and the reading's limit
-(P0: σ = 8 blur raises it by 2.5 px) is exceeded.
+and, **post hoc** (added after the first look at the frames), the particles' depth,
+background minus centre of the radial profile (grey levels):
+
+| | block 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| static, true | 24.3 | 25.1 | 23.6 | 24.4 | 25.4 | 24.5 |
+| static, ConvLSTM | 7.7 | 2.3 | 0.9 | 0.6 | 0.4 | 0.4 |
+| diffusion, true | 20.9 | 20.8 | 21.8 | 22.3 | 22.6 | 23.8 |
+| diffusion, ConvLSTM | 2.6 | 0.8 | 0.5 | 0.3 | 0.1 | 0.1 |
+| reaction, true | 15.7 | 16.6 | 18.2 | 20.3 | 19.6 | 19.3 |
+| reaction, ConvLSTM | 1.5 | 0.5 | 0.3 | 0.2 | 0.1 | 0.0 |
+
+The ConvLSTM erases the particles: most of their contrast is gone in the first eight
+frames and all of it by +48 (`thesis/figures/fig_pixel_erase.pdf` shows a static clip).
+The half-depth radius of a flat profile is meaningless and drifts outward at the same
+rate on every process; that drift is the "growth" the judged reading measures. This is
+the pixel version of the token forecaster's fade: when a particle may move anywhere
+within a few pixels, the squared-error-optimal frame is the background.
 
 ### Exponents over the forecast, median [CI], context 8
 
@@ -94,7 +108,7 @@ rollout from a later start blurs further.
 ## Predictions (written before P0)
 
 1. P0.1 passes; blur leaves total area unchanged and biases radius up at σ ≥ 4. **Wrong** (P0: the stop rule fired).
-2. The ConvLSTM fades: detection F1 at +5 below persistence, peak occupancy below 0.6 by +10. **Not tested**: the encode step saved the attentive readings, not the occupancy map. The attentive probe reads the ConvLSTM's particles as shrinking (exponents −0.42 / −0.54), which fits, under P0's warning.
+2. The ConvLSTM fades: detection F1 at +5 below persistence, peak occupancy below 0.6 by +10. **Not tested as stated**: the encode step saved the attentive readings, not the occupancy map. **Right in substance, post hoc**: the particles' depth at their true centres falls to 1.5–7.7 grey levels in the first 8 frames and to ~0 by +48 (true 16–24); the attentive probe reads them as shrinking (−0.42 / −0.54).
 3. It carries some growth (gain over the reference at +24 above 0 on reaction), but latent beats pixel. **First half wrong** (−4.36 px on the pooled path), **second half right**.
 4. Its exponents are below A's and its static exponent is within ±0.1 of 0; Gate 2′ FAIL. **Wrong on the judged reading** (above A's, static 0.566), **mixed on dark mass** (0.191 below 0.208, 0.279 above 0.269, static 0.082 within ±0.1); **Gate 2′ FAIL right**.
 5. At +1 its mean-radius MAE is within 0.1 px of persistence. **Wrong** (2.19 / 1.89 against 0.73 / 0.73, pooled path).
@@ -102,8 +116,8 @@ rollout from a later start blurs further.
 ## Conclusion
 
 Latent beats pixel, as pre-registered, on both processes. The reason is not that
-the ConvLSTM under-forecasts growth: it trades the particles' shape for a lower pixel
-MSE, spreading them at the same rate on every process, so its "growth" is the same
-on static clips as on growing ones. A blur-proof reading recovers some real growth
+the ConvLSTM under-forecasts growth: it erases the particles for a lower pixel MSE,
+as the token forecaster does, and the reading of the faded frames shows the same
+"growth" on static clips as on growing ones. A blur-proof reading recovers some real growth
 from it, comparable to A's, but with spurious growth on the processes that have none.
 Candidate A's growth is weak (0.208 / 0.269) but specific to the processes that grow.
