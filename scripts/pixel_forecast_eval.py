@@ -26,6 +26,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+from compare_to_real import radial_profile
 from dark_mass import background, latent_masses, radius_exponent
 from eval_forecasts import snippet_exponent
 from gate2_followup import bootstrap_ci
@@ -88,8 +89,26 @@ def pixel_columns(frames: dict, gt: tuple, m: dict, first: int) -> dict:
         radius = pixel_reading(frames[name], *gt)
         mid = first + np.arange(len(radius)) * PIXEL_BLOCK + (PIXEL_BLOCK - 1) / 2
         out[f"radius/{label}"] = radius
+        out[f"depth/{label}"] = particle_depth(frames[name], gt)
         out[f"pixel/{label}"] = snippet_exponent(growth_time(m, mid), radius)
     return out
+
+
+def particle_depth(frames: np.ndarray, gt: tuple) -> np.ndarray:
+    """Post hoc: how dark the particles are at their true centres, per 8-frame block
+    (background minus centre of the radial profile, grey levels). A forecast that
+    erases particles reads ~0, and its radius reading is then that of a flat profile."""
+    pos, rad = gt
+    out = []
+    for b in range(0, len(frames), PIXEL_BLOCK):
+
+        def centres(_f, i, b=b):
+            lat = (b + i) // TUBELET
+            return pos[rad[:, lat] > 0, lat]
+
+        prof = radial_profile(frames[b:], centres, k=PIXEL_BLOCK)
+        out.append(prof[-PIXEL_BLOCK:].mean() - prof[0])
+    return np.array(out)
 
 
 def dark_exponent(frames: np.ndarray, ref: np.ndarray, m: dict, first: int) -> float:
@@ -204,13 +223,12 @@ def judged(rows: list[dict]) -> dict:
     return out
 
 
-def radius_table(rows: list[dict]) -> dict:
-    """Median radius at the true centres per 8-frame block, per process: a growing
-    reading on static clips is blur, not growth."""
+def block_table(rows: list[dict], quantity: str) -> dict:
+    """Median ``radius`` or ``depth`` at the true centres per 8-frame block, per process."""
     return {
         p: {
             k: np.nanmedian(
-                [r[f"radius/{k}"] for r in rows if r["process"] == p], axis=0
+                [r[f"{quantity}/{k}"] for r in rows if r["process"] == p], axis=0
             ).tolist()
             for k in ("convlstm", "true")
         }
@@ -267,7 +285,8 @@ def evaluate_all(inputs: dict) -> dict:
         "n_snippets": len(rows),
         "judged": judged(rows),
         "exponents_ctx8": exponent_table(rows, keys),
-        "radius_px_by_block_ctx8": radius_table(rows),
+        "radius_px_by_block_ctx8": block_table(rows, "radius"),
+        "depth_by_block_ctx8_posthoc": block_table(rows, "depth"),
         "pixel_mse_ctx8": mse_table(rows),
         "exponents_ctx16": exponent_table(
             long_rows(inputs, test), ["pixel/convlstm", "pixel/true"]
